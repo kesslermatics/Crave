@@ -33,7 +33,7 @@ export function AuthForm({ mode }: AuthFormProps) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ email, password }),
             });
-            const payload: { detail?: string; message?: string; access_token?: string } = await response.json();
+            const payload: { detail?: string; message?: string; access_token?: string } = await response.json().catch(() => ({}));
 
             if (!response.ok) {
                 throw new Error(payload.detail ?? "Something went wrong. Please try again.");

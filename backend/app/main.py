@@ -14,6 +14,7 @@ from app.db import get_engine, initialize_database
 
 settings = get_settings()
 PRODUCTION_FRONTEND_ORIGIN = "https://crave-frontend-production.up.railway.app"
+PRODUCTION_BACKEND_HOST = "crave-backend-production.up.railway.app"
 
 
 @asynccontextmanager
@@ -49,7 +50,12 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
 )
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_host_list)
+app.add_middleware(
+    TrustedHostMiddleware,
+    # Keep the deployed Railway domain reachable even when the environment
+    # variable has not yet been entered in the Railway dashboard.
+    allowed_hosts=[PRODUCTION_BACKEND_HOST, "healthcheck.railway.app"] if settings.is_production else settings.allowed_host_list,
+)
 app.include_router(auth_router)
 
 
