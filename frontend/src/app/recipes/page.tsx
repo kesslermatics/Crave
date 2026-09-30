@@ -1,15 +1,14 @@
 import { AuthGate } from "@/components/auth-gate";
+import { RecipeExplorer } from "@/components/recipe-explorer";
 import { MobileNav, SiteHeader } from "@/components/site-header";
-import { Footer, Recipes } from "@/components/sections";
 
 export default function RecipesPage() {
     return (
         <AuthGate>
             <SiteHeader />
             <main>
-                <Recipes />
+                <RecipeExplorer />
             </main>
-            <Footer />
             <MobileNav />
         </AuthGate>
     );

@@ -1,5 +1,7 @@
 """Recipe persistence and filter endpoints."""
 
+import json
+from difflib import SequenceMatcher
 from typing import Annotated
 from uuid import UUID
 
@@ -38,6 +40,28 @@ def serialise_recipe(recipe: Recipe) -> RecipeRead:
         tags=[tag.name for tag in recipe.tags],
         created_at=recipe.created_at,
     )
+
+
+def fuzzy_matches(recipe: Recipe, search: str) -> bool:
+    """Find partial and typo-tolerant matches across all user-facing recipe data."""
+    haystack = " ".join(
+        [
+            recipe.title,
+            recipe.description,
+            " ".join(tag.name for tag in recipe.tags),
+            json.dumps(recipe.ingredients, ensure_ascii=False),
+            json.dumps(recipe.instructions, ensure_ascii=False),
+            json.dumps(recipe.details, ensure_ascii=False),
+        ]
+    ).lower()
+    words = haystack.split()
+    for term in search.lower().split():
+        if term in haystack:
+            continue
+        # A score of 0.72 catches small typos without returning unrelated recipes.
+        if not any(SequenceMatcher(None, term, word).ratio() >= 0.72 for word in words):
+            return False
+    return True
 
 
 async def resolve_tags(session: AsyncSession, names: list[str]) -> list[Tag]:
@@ -91,12 +115,13 @@ async def list_recipes(
     max_time_minutes: Annotated[int | None, Query(ge=0, le=10_080)] = None,
     min_protein_g: Annotated[float | None, Query(ge=0, le=10_000)] = None,
     tag: str | None = Query(default=None, min_length=1, max_length=80),
+    search: str | None = Query(default=None, min_length=1, max_length=100),
     limit: Annotated[int, Query(ge=1, le=100)] = 24,
     session: AsyncSession = Depends(get_session),
     _: User = Depends(get_current_user),
 ) -> list[RecipeSummary]:
     """List recipes using indexed time, macro, type, and tag filters."""
-    statement = select(Recipe).options(selectinload(Recipe.tags)).order_by(Recipe.created_at.desc()).limit(limit)
+    statement = select(Recipe).options(selectinload(Recipe.tags)).order_by(Recipe.created_at.desc())
     if recipe_type is not None:
         statement = statement.where(Recipe.recipe_type == recipe_type)
     if max_time_minutes is not None:
@@ -107,6 +132,9 @@ async def list_recipes(
         statement = statement.join(Recipe.tags).where(Tag.name == tag.strip().lower())
 
     recipes = (await session.scalars(statement)).unique().all()
+    if search is not None:
+        recipes = [recipe for recipe in recipes if fuzzy_matches(recipe, search)]
+    recipes = recipes[:limit]
     return [RecipeSummary(**serialise_recipe(recipe).model_dump()) for recipe in recipes]
 
 
