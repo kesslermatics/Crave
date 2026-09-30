@@ -6,9 +6,9 @@ import { useEffect, useState } from "react";
 import { apiUrl } from "@/lib/api";
 
 const categories = [
-    { type: "meal", label: "Meals", icon: "🍲" },
-    { type: "baking", label: "Baking", icon: "🧁" },
-    { type: "drink", label: "Drinks", icon: "🥤" },
+    { type: "meal", label: "Mahlzeiten", icon: "🍲" },
+    { type: "baking", label: "Backen", icon: "🧁" },
+    { type: "drink", label: "Getränke", icon: "🥤" },
     { type: "basic", label: "Basics", icon: "🫙" },
 ] as const;
 
@@ -21,6 +21,7 @@ type Recipe = {
     calories: number;
     protein_g: number;
     tags: string[];
+    image_data: string | null;
 };
 
 const gradients = [
@@ -52,11 +53,11 @@ export function RecipeExplorer() {
                     headers: { Authorization: `Bearer ${token}` },
                     signal: controller.signal,
                 });
-                if (!response.ok) throw new Error("Recipes could not be loaded.");
+                if (!response.ok) throw new Error("Rezepte konnten nicht geladen werden.");
                 setRecipes(await response.json());
             } catch (caughtError) {
                 if ((caughtError as Error).name !== "AbortError") {
-                    setError(caughtError instanceof Error ? caughtError.message : "Recipes could not be loaded.");
+                    setError(caughtError instanceof Error ? caughtError.message : "Rezepte konnten nicht geladen werden.");
                 }
             } finally {
                 if (!controller.signal.aborted) setIsLoading(false);
@@ -74,7 +75,7 @@ export function RecipeExplorer() {
             <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
                 <div className="relative flex items-center justify-between gap-3">
                     <div>
-                        <p className="text-[11px] font-bold tracking-[0.18em] text-caramel">YOUR COOKBOOK</p>
+                        <p className="text-[11px] font-bold tracking-[0.18em] text-caramel">DEIN KOCHBUCH</p>
                         <button onClick={() => setIsMenuOpen((open) => !open)} className="mt-2 flex items-center gap-2 text-left text-3xl font-semibold tracking-[-0.06em] text-espresso sm:text-4xl" aria-expanded={isMenuOpen} aria-haspopup="listbox">
                             <span>{category.icon}</span>{category.label}<span className="text-base text-caramel">⌄</span>
                         </button>
@@ -92,26 +93,26 @@ export function RecipeExplorer() {
                 </div>
 
                 <label className="relative mt-7 block">
-                    <span className="sr-only">Search {category.label.toLowerCase()}</span>
+                    <span className="sr-only">{category.label} durchsuchen</span>
                     <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg text-caramel">⌕</span>
-                    <input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-2xl border border-espresso/10 bg-white py-4 pl-11 pr-4 text-sm font-medium outline-none transition placeholder:text-bark/50 focus:border-caramel focus:ring-4 focus:ring-saffron/30" placeholder={`Search ${category.label.toLowerCase()}, ingredients or tags`} />
+                    <input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-2xl border border-espresso/10 bg-white py-4 pl-11 pr-4 text-sm font-medium outline-none transition placeholder:text-bark/50 focus:border-caramel focus:ring-4 focus:ring-saffron/30" placeholder={`${category.label}, Zutaten oder Tags suchen`} />
                 </label>
-                <p className="mt-3 text-xs leading-5 text-bark">Fuzzy search includes titles, descriptions, ingredients, instructions, tags and all category details.</p>
+                <p className="mt-3 text-xs leading-5 text-bark">Die unscharfe Suche berücksichtigt Titel, Beschreibung, Zutaten, Schritte, Tags und alle Kategorie-Details.</p>
 
                 {error && <p role="alert" className="mt-8 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
-                {isLoading ? <p className="mt-12 text-center text-sm font-semibold text-bark">Finding recipes…</p> : recipes.length === 0 ? (
+                {isLoading ? <p className="mt-12 text-center text-sm font-semibold text-bark">Rezepte werden gesucht…</p> : recipes.length === 0 ? (
                     <div className="mt-12 rounded-3xl border border-dashed border-espresso/20 bg-white px-6 py-14 text-center">
                         <span className="text-3xl">{category.icon}</span>
-                        <h2 className="mt-4 text-xl font-semibold tracking-[-0.04em] text-espresso">No {category.label.toLowerCase()} yet</h2>
-                        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-bark">Create the first recipe for this category and it will appear here.</p>
-                        <Link href={`/recipes/new?type=${category.type}`} className="mt-6 inline-block rounded-full bg-caramel px-5 py-3 text-sm font-bold text-white hover:bg-espresso">Add recipe</Link>
+                        <h2 className="mt-4 text-xl font-semibold tracking-[-0.04em] text-espresso">Noch keine {category.label.toLowerCase()}</h2>
+                        <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-bark">Erstelle das erste Rezept dieser Kategorie, dann erscheint es hier.</p>
+                        <Link href={`/recipes/new?type=${category.type}`} className="mt-6 inline-block rounded-full bg-caramel px-5 py-3 text-sm font-bold text-white hover:bg-espresso">Rezept hinzufügen</Link>
                     </div>
                 ) : (
                     <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                         {recipes.map((recipe, index) => (
                             <article key={recipe.id} className="overflow-hidden rounded-3xl border border-espresso/8 bg-white shadow-[0_10px_25px_rgba(66,52,33,0.06)]">
-                                <div className={`h-36 bg-gradient-to-br ${gradients[index % gradients.length]}`} />
-                                <div className="p-5"><h2 className="text-lg font-semibold tracking-[-0.04em] text-espresso">{recipe.title}</h2><p className="mt-1 line-clamp-2 text-xs leading-5 text-bark">{recipe.description}</p><p className="mt-4 text-xs font-bold text-caramel">{recipe.total_time_minutes} min · {recipe.calories} kcal · {recipe.protein_g}g protein</p></div>
+                                <div className={`h-36 bg-gradient-to-br ${gradients[index % gradients.length]}`} style={recipe.image_data ? { backgroundImage: `url(${recipe.image_data})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined} />
+                                <div className="p-5"><h2 className="text-lg font-semibold tracking-[-0.04em] text-espresso">{recipe.title}</h2><p className="mt-1 line-clamp-2 text-xs leading-5 text-bark">{recipe.description}</p><p className="mt-4 text-xs font-bold text-caramel">{recipe.total_time_minutes} Min. · {recipe.calories} kcal · {recipe.protein_g} g Protein</p></div>
                             </article>
                         ))}
                     </div>

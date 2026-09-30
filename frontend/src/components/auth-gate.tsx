@@ -32,7 +32,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }, [router]);
 
     if (!isAuthorised) {
-        return <main className="grid min-h-screen place-items-center bg-linen text-sm font-bold text-bark">Checking your Crave account…</main>;
+        return <main className="grid min-h-screen place-items-center bg-linen text-sm font-bold text-bark">Dein Crave-Konto wird geprüft…</main>;
     }
 
     return <>{children}</>;

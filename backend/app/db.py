@@ -34,3 +34,8 @@ async def initialize_database() -> None:
 
     async with get_engine().begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        # Transitional migration for databases created before generated images
+        # replaced user-supplied image URLs. Use Alembic for future migrations.
+        from sqlalchemy import text
+
+        await connection.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS image_data TEXT"))

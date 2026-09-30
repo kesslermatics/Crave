@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.recipe_enums import (
     CaffeineLevel,
@@ -94,7 +94,7 @@ class RecipeCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1, max_length=2_000)
     recipe_type: RecipeType
-    image_url: HttpUrl | None = None
+    image_data: str | None = Field(default=None, max_length=15_000_000)
     servings: int = Field(gt=0, le=100)
     total_time_minutes: int = Field(ge=0, le=10_080)
     difficulty: Difficulty
@@ -126,7 +126,7 @@ class RecipeSummary(BaseModel):
     title: str
     description: str
     recipe_type: RecipeType
-    image_url: str | None
+    image_data: str | None
     total_time_minutes: int
     difficulty: Difficulty
     calories: int

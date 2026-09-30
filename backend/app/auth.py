@@ -57,16 +57,16 @@ async def get_current_user(
     session: AsyncSession = Depends(get_session),
 ) -> User:
     if credentials is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="authentication required")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Anmeldung erforderlich")
     try:
         payload = jwt.decode(credentials.credentials, get_settings().jwt_secret_value, algorithms=["HS256"])
         user_id = payload["sub"]
     except (jwt.PyJWTError, KeyError):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid access token") from None
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Ungültiger Zugriffstoken") from None
 
     user = await session.get(User, user_id)
     if user is None or not user.is_active:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid access token")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Ungültiger Zugriffstoken")
     return user
 
 
@@ -78,17 +78,17 @@ async def signup(payload: SignupRequest, session: AsyncSession = Depends(get_ses
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="email is already registered") from None
-    return SignupResponse(status="pending_activation", message="Your account awaits admin activation.")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="E-Mail-Adresse ist bereits registriert") from None
+    return SignupResponse(status="pending_activation", message="Dein Konto wartet auf die manuelle Freischaltung.")
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, session: AsyncSession = Depends(get_session)) -> TokenResponse:
     user = await session.scalar(select(User).where(User.email == normalise_email(payload.email)))
     if user is None or not password_hasher.verify(payload.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid email or password")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-Mail-Adresse oder Passwort ist ungültig")
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account is awaiting activation")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dein Konto wartet noch auf die Freischaltung")
     return TokenResponse(access_token=create_access_token(user), expires_in=ACCESS_TOKEN_MINUTES * 60)
 
 

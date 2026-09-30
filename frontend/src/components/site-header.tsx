@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 const links = [
-    { href: "/", label: "Home" },
-    { href: "/recipes", label: "Recipes" },
+    { href: "/", label: "Start" },
+    { href: "/recipes", label: "Rezepte" },
 ];
 
 export function Logo() {
@@ -27,7 +27,7 @@ export function SiteHeader() {
                     ))}
                 </nav>
                 <Link href="/recipes" className="rounded-full bg-caramel px-4 py-2.5 text-xs font-bold text-white transition hover:bg-espresso sm:px-5 sm:text-sm">
-                    View recipes
+                    Rezepte ansehen
                 </Link>
             </div>
         </header>
@@ -36,8 +36,8 @@ export function SiteHeader() {
 
 export function MobileNav() {
     const items = [
-        { href: "/", icon: "⌂", label: "Home" },
-        { href: "/recipes", icon: "◫", label: "Recipes" },
+        { href: "/", icon: "⌂", label: "Start" },
+        { href: "/recipes", icon: "◫", label: "Rezepte" },
     ];
     return (
         <nav aria-label="Quick navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-espresso/8 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">

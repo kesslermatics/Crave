@@ -21,6 +21,7 @@ Create three services: Postgres, `backend` (root directory `backend`) and `front
 | `ENVIRONMENT` | `production` (disables `/docs` and the OpenAPI schema, enables HSTS) |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (reference variable) |
 | `GEMINI_API_KEY` | your key (keep it as a Railway secret) |
+| `OPENAI_API_KEY` | OpenAI secret for `gpt-6-sol` descriptions and `image-1` recipe images |
 | `JWT_SECRET` | a long, cryptographically random Railway secret used to sign access tokens |
 | `CORS_ORIGINS` | not needed in production; CORS is pinned to `https://crave-frontend-production.up.railway.app` in the API code |
 | `ALLOWED_HOSTS` | `crave-backend-production.up.railway.app` |

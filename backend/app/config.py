@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: SecretStr | None = Field(default=None, alias="DATABASE_URL")
     gemini_api_key: SecretStr | None = Field(default=None, alias="GEMINI_API_KEY")
+    openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
     jwt_secret: SecretStr | None = Field(default=None, alias="JWT_SECRET")
     # Comma-separated list of exact origins, e.g. https://crave.up.railway.app
     cors_origins: str = "http://localhost:3000"
@@ -27,6 +28,12 @@ class Settings(BaseSettings):
         if self.jwt_secret is None:
             raise RuntimeError("JWT_SECRET is not set")
         return self.jwt_secret.get_secret_value()
+
+    @property
+    def openai_api_key_value(self) -> str:
+        if self.openai_api_key is None:
+            raise RuntimeError("OPENAI_API_KEY is not set")
+        return self.openai_api_key.get_secret_value()
 
     @property
     def cors_origin_list(self) -> list[str]:
