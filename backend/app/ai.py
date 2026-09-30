@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from openai import AsyncOpenAI, OpenAIError, RateLimitError
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.auth import get_current_user
 from app.config import get_settings
@@ -46,52 +46,53 @@ class ImageResponse(BaseModel):
 class RecipeSuggestionRequest(BaseModel):
     prompt: str = Field(min_length=8, max_length=1_500)
     history: list[str] = Field(default_factory=list, max_length=20)
+    exclude_titles: list[str] = Field(default_factory=list, max_length=100)
 
 
 class RecipeSuggestionsResponse(BaseModel):
-    recipes: list[RecipeCreate] = Field(min_length=10, max_length=10)
+    recipes: list[RecipeCreate] = Field(min_length=3, max_length=3)
 
 
 class GeneratedIngredient(BaseModel):
-    name: str
-    amount: float
-    unit: str
+    name: str = Field(min_length=1, max_length=160)
+    amount: float = Field(ge=0, le=100_000)
+    unit: str = Field(min_length=1, max_length=32)
 
 
 class GeneratedMealDetails(BaseModel):
-    cooking_method: str
-    required_equipment: list[str]
-    prep_time_minutes: int
-    cook_time_minutes: int
+    cooking_method: str = Field(min_length=1, max_length=80)
+    required_equipment: list[str] = Field(max_length=20)
+    prep_time_minutes: int = Field(ge=0, le=1_440)
+    cook_time_minutes: int = Field(ge=0, le=1_440)
     meal_prep_friendly: bool
-    fridge_life_days: int
+    fridge_life_days: int = Field(ge=0, le=365)
     freezable: bool
-    spiciness_level: int
+    spiciness_level: int = Field(ge=1, le=5)
     volume_index: Literal["low", "medium", "high"]
     served_temperature: Literal["hot", "warm", "cold"]
 
 
 class GeneratedRecipe(BaseModel):
-    title: str
-    description: str
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=2_000)
     recipe_type: Literal["meal"]
     image_data: None
-    servings: int
-    total_time_minutes: int
+    servings: int = Field(gt=0, le=100)
+    total_time_minutes: int = Field(ge=0, le=10_080)
     difficulty: Literal["easy", "medium", "hard"]
-    calories: int
-    protein_g: float
-    carbs_g: float
-    fat_g: float
-    ingredients: list[GeneratedIngredient]
-    instructions: list[str]
+    calories: int = Field(ge=0, le=100_000)
+    protein_g: float = Field(ge=0, le=10_000)
+    carbs_g: float = Field(ge=0, le=10_000)
+    fat_g: float = Field(ge=0, le=10_000)
+    ingredients: list[GeneratedIngredient] = Field(min_length=1, max_length=100)
+    instructions: list[str] = Field(min_length=1, max_length=100)
     details: GeneratedMealDetails
     is_ai_generated: bool
-    tags: list[str]
+    tags: list[str] = Field(max_length=30)
 
 
 class GeneratedRecipeSuggestions(BaseModel):
-    recipes: list[GeneratedRecipe] = Field(min_length=10, max_length=10)
+    recipes: list[GeneratedRecipe] = Field(min_length=3, max_length=3)
 
 
 class ChatMessage(BaseModel):
@@ -167,24 +168,28 @@ async def generate_recipe_suggestions(
     request: RecipeSuggestionRequest,
     _: User = Depends(get_current_user),
 ) -> RecipeSuggestionsResponse:
-    """Generate ten complete, save-ready meal recipes from a culinary mood prompt."""
+    """Generate three complete, save-ready meal recipes from a culinary mood prompt."""
     prompt = f"""Du bist der kulinarische Ideengeber für die deutsche Koch-App Crave.
-Erstelle exakt zehn unterschiedliche, realistische Rezeptvorschläge als valides JSON-Objekt mit genau dem Schlüssel "recipes". Jeder Eintrag muss alle Felder eines RecipeCreate-Objekts enthalten und sofort speicherbar sein. Verwende ausschließlich recipe_type "meal", difficulty "easy", "medium" oder "hard" sowie die passenden meal-details: cooking_method, required_equipment, prep_time_minutes, cook_time_minutes, meal_prep_friendly, fridge_life_days, freezable, spiciness_level, volume_index und served_temperature. Setze image_data auf null und is_ai_generated auf true.
+Erstelle exakt drei unterschiedliche, realistische Rezeptvorschläge als valides JSON-Objekt mit genau dem Schlüssel "recipes". Jeder Eintrag muss alle Felder eines RecipeCreate-Objekts enthalten und sofort speicherbar sein. Verwende ausschließlich recipe_type "meal", difficulty "easy", "medium" oder "hard" sowie die passenden meal-details: cooking_method, required_equipment, prep_time_minutes, cook_time_minutes, meal_prep_friendly, fridge_life_days, freezable, spiciness_level, volume_index und served_temperature. Setze image_data auf null und is_ai_generated auf true.
 Die Beschreibungen müssen natürliches Deutsch sein, zwei kurze Sätze enthalten und ohne Marketingfloskeln auskommen. Zutaten brauchen name, amount und unit; die Zubereitung besteht aus klaren einzelnen Schritten. Verwende nur plausible Nährwerte und Zeitangaben. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
 Berücksichtige alle vorherigen Wünsche als zusammenhängenden Verlauf. Der neueste Wunsch konkretisiert oder verändert die bisherigen Wünsche.
 Bisherige Wünsche: {json.dumps(request.history, ensure_ascii=False)}
+Bereits gezeigte Titel, die nicht erneut vorgeschlagen werden dürfen: {json.dumps(request.exclude_titles, ensure_ascii=False)}
 Nutzerwunsch: {request.prompt}"""
     try:
         response = await client().responses.parse(
             model=DESCRIPTION_MODEL,
             input=prompt,
             text_format=GeneratedRecipeSuggestions,
-            max_output_tokens=20_000,
+            max_output_tokens=8_000,
         )
         if response.output_parsed is None:
             raise ValueError("OpenAI did not return a structured recipe response")
         recipes = [RecipeCreate.model_validate(recipe.model_dump()) for recipe in response.output_parsed.recipes]
         return RecipeSuggestionsResponse(recipes=recipes)
+    except ValidationError as error:
+        logger.warning("OpenAI recipe suggestions violated the recipe schema: %s", error.errors())
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Die KI hat unvollständige Rezeptdaten zurückgegeben. Bitte versuche es noch einmal.") from None
     except (OpenAIError, json.JSONDecodeError, ValueError):
         logger.exception("OpenAI recipe suggestion generation failed")
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Rezeptvorschläge sind momentan nicht verfügbar.") from None
