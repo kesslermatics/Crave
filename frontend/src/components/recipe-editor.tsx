@@ -4,15 +4,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { CakeSlice, CookingPot, CupSoda, Soup } from "lucide-react";
 
 import { apiUrl } from "@/lib/api";
 import { LoadingIndicator } from "@/components/loading-indicator";
 
 const categories = {
-	meal: { label: "Mahlzeit", icon: "🍲" },
-	baking: { label: "Backen", icon: "🧁" },
-	drink: { label: "Getränk", icon: "🥤" },
-	basic: { label: "Grundrezept", icon: "🫙" },
+	meal: { label: "Mahlzeit", icon: <Soup size={14} strokeWidth={2.25} aria-hidden="true" /> },
+	baking: { label: "Backen", icon: <CakeSlice size={14} strokeWidth={2.25} aria-hidden="true" /> },
+	drink: { label: "Getränk", icon: <CupSoda size={14} strokeWidth={2.25} aria-hidden="true" /> },
+	basic: { label: "Grundrezept", icon: <CookingPot size={14} strokeWidth={2.25} aria-hidden="true" /> },
 } as const;
 
 type RecipeType = keyof typeof categories;

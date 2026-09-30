@@ -1,6 +1,6 @@
 """Signup, login, and bearer-token authentication."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Annotated
 
 import jwt
@@ -19,9 +19,6 @@ from app.models import User
 router = APIRouter(prefix="/auth", tags=["auth"])
 password_hasher = PasswordHash.recommended()
 bearer_scheme = HTTPBearer(auto_error=False)
-ACCESS_TOKEN_MINUTES = 30
-
-
 class SignupRequest(BaseModel):
     email: EmailStr
     password: Annotated[str, Field(min_length=12, max_length=128)]
@@ -39,7 +36,7 @@ class SignupResponse(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    expires_in: int
+    expires_in: None = None
 
 
 def normalise_email(email: EmailStr) -> str:
@@ -47,8 +44,7 @@ def normalise_email(email: EmailStr) -> str:
 
 
 def create_access_token(user: User) -> str:
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_MINUTES)
-    payload = {"sub": user.id, "email": user.email, "exp": expires_at, "iat": datetime.now(timezone.utc)}
+    payload = {"sub": user.id, "email": user.email, "iat": datetime.now(timezone.utc)}
     return jwt.encode(payload, get_settings().jwt_secret_value, algorithm="HS256")
 
 
@@ -89,7 +85,7 @@ async def login(payload: LoginRequest, session: AsyncSession = Depends(get_sessi
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="E-Mail-Adresse oder Passwort ist ungültig")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dein Konto wartet noch auf die Freischaltung")
-    return TokenResponse(access_token=create_access_token(user), expires_in=ACCESS_TOKEN_MINUTES * 60)
+    return TokenResponse(access_token=create_access_token(user))
 
 
 @router.get("/me")
