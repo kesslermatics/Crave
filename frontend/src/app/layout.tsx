@@ -8,14 +8,17 @@ const sora = Sora({
 });
 
 export const metadata: Metadata = {
-  title: "Crave — Culinary intelligence",
-  description: "AI-powered culinary inspiration for every appetite.",
+  title: "Crave — Kulinarische Intelligenz",
+  description: "KI-gestützte Rezeptideen für jeden Appetit.",
+  icons: {
+    icon: "/icon.svg",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
-      lang="en"
+      lang="de"
       className={`${sora.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>

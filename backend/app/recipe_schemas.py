@@ -110,6 +110,15 @@ class RecipeCreate(BaseModel):
 
     @model_validator(mode="after")
     def validate_details_for_recipe_type(self):
+        # Normalize German difficulty values to canonical DB values
+        difficulty_map = {
+            Difficulty.EINFACH: Difficulty.EASY,
+            Difficulty.MITTEL: Difficulty.MEDIUM,
+            Difficulty.SCHWER: Difficulty.HARD,
+        }
+        if self.difficulty in difficulty_map:
+            self.difficulty = difficulty_map[self.difficulty]
+
         detail_model = DETAIL_MODELS[self.recipe_type]
         self.details = detail_model.model_validate(self.details).model_dump(mode="json")
         self.tags = sorted({tag.strip().lower() for tag in self.tags if tag.strip()})

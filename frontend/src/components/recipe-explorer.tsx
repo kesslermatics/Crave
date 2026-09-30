@@ -9,7 +9,7 @@ const categories = [
     { type: "meal", label: "Mahlzeiten", icon: "🍲" },
     { type: "baking", label: "Backen", icon: "🧁" },
     { type: "drink", label: "Getränke", icon: "🥤" },
-    { type: "basic", label: "Basics", icon: "🫙" },
+    { type: "basic", label: "Grundrezepte", icon: "🫙" },
 ] as const;
 
 type Category = (typeof categories)[number];
@@ -80,7 +80,7 @@ export function RecipeExplorer() {
                             <span>{category.icon}</span>{category.label}<span className="text-base text-caramel">⌄</span>
                         </button>
                     </div>
-                    <Link href={`/recipes/new?type=${category.type}`} className="grid h-11 w-11 place-items-center rounded-full bg-caramel text-2xl text-white shadow-[0_10px_20px_rgba(153,97,48,0.2)] transition hover:bg-espresso" aria-label={`Create ${category.label.toLowerCase()} recipe`}>+</Link>
+                    <Link href={`/recipes/new?type=${category.type}`} className="grid h-11 w-11 place-items-center rounded-full bg-caramel text-2xl text-white shadow-[0_10px_20px_rgba(153,97,48,0.2)] transition hover:bg-espresso" aria-label={`Rezept in der Kategorie ${category.label} hinzufügen`}>+</Link>
                     {isMenuOpen && (
                         <div role="listbox" className="absolute left-0 top-20 z-20 w-56 overflow-hidden rounded-2xl border border-espresso/10 bg-white p-1.5 shadow-[0_16px_40px_rgba(66,52,33,0.15)]">
                             {categories.map((item) => (
@@ -97,13 +97,11 @@ export function RecipeExplorer() {
                     <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg text-caramel">⌕</span>
                     <input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-2xl border border-espresso/10 bg-white py-4 pl-11 pr-4 text-sm font-medium outline-none transition placeholder:text-bark/50 focus:border-caramel focus:ring-4 focus:ring-saffron/30" placeholder={`${category.label}, Zutaten oder Tags suchen`} />
                 </label>
-                <p className="mt-3 text-xs leading-5 text-bark">Die unscharfe Suche berücksichtigt Titel, Beschreibung, Zutaten, Schritte, Tags und alle Kategorie-Details.</p>
-
                 {error && <p role="alert" className="mt-8 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
                 {isLoading ? <p className="mt-12 text-center text-sm font-semibold text-bark">Rezepte werden gesucht…</p> : recipes.length === 0 ? (
                     <div className="mt-12 rounded-3xl border border-dashed border-espresso/20 bg-white px-6 py-14 text-center">
                         <span className="text-3xl">{category.icon}</span>
-                        <h2 className="mt-4 text-xl font-semibold tracking-[-0.04em] text-espresso">Noch keine {category.label.toLowerCase()}</h2>
+                        <h2 className="mt-4 text-xl font-semibold tracking-[-0.04em] text-espresso">Noch keine {category.label}</h2>
                         <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-bark">Erstelle das erste Rezept dieser Kategorie, dann erscheint es hier.</p>
                         <Link href={`/recipes/new?type=${category.type}`} className="mt-6 inline-block rounded-full bg-caramel px-5 py-3 text-sm font-bold text-white hover:bg-espresso">Rezept hinzufügen</Link>
                     </div>
