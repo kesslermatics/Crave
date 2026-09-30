@@ -44,12 +44,12 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 	return <section className="rounded-[2rem] border border-espresso/10 bg-sand/25 p-5 sm:p-7"><div className="mb-5"><h2 className="text-xl font-semibold tracking-[-0.04em] text-espresso">{title}</h2>{hint && <p className="mt-1 text-sm text-bark">{hint}</p>}</div>{children}</section>;
 }
 
-export function RecipeEditor({ initialType = "meal" }: { initialType?: string }) {
-	const type: RecipeType = initialType in categories ? initialType as RecipeType : "meal";
+export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?: string; recipeId?: string }) {
+	const [type, setType] = useState<RecipeType>(initialType in categories ? initialType as RecipeType : "meal");
 	const { label, icon } = categories[type];
 	const router = useRouter();
 	const searchParams = useSearchParams();
-	const editId = searchParams.get("edit");
+	const editId = recipeId ?? searchParams.get("edit");
 	const formRef = useRef<HTMLFormElement>(null);
 	const [description, setDescription] = useState("");
 	const [imageData, setImageData] = useState("");
@@ -58,11 +58,35 @@ export function RecipeEditor({ initialType = "meal" }: { initialType?: string })
 	const [isWriting, setIsWriting] = useState(false);
 	const [isImaging, setIsImaging] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
+	const [isLoadingRecipe, setIsLoadingRecipe] = useState(Boolean(editId));
+	const saveAsDuplicateRef = useRef(false);
 	const [error, setError] = useState("");
 
 	useEffect(() => {
-		if (editId) router.replace(`/recipes/${editId}/edit`);
-	}, [editId, router]);
+		if (!editId) return;
+		const controller = new AbortController();
+		const token = sessionStorage.getItem("crave_access_token");
+		fetch(`${apiUrl}/recipes/${editId}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
+			.then(async (response) => { if (!response.ok) throw new Error("Das Rezept konnte nicht geladen werden."); return response.json(); })
+			.then((recipe) => {
+				setType(recipe.recipe_type in categories ? recipe.recipe_type : "meal");
+				setDescription(recipe.description ?? ""); setImageData(recipe.image_data ?? "");
+				setIngredients(recipe.ingredients?.map((ingredient: { name: string; amount: number; unit: string }) => ({ ...ingredient, amount: String(ingredient.amount) })) ?? [{ name: "", amount: "", unit: "g" }]);
+				setSteps(recipe.instructions?.length ? recipe.instructions : [""]);
+				window.setTimeout(() => {
+					const values = { ...recipe, ...recipe.details, tags: recipe.tags?.join(", ") ?? "" } as Record<string, unknown>;
+					Object.entries(values).forEach(([name, fieldValue]) => {
+						const field = formRef.current?.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
+						if (!field) return;
+						if (field instanceof HTMLInputElement && field.type === "checkbox") field.checked = Boolean(fieldValue);
+						else field.value = Array.isArray(fieldValue) ? fieldValue.join(", ") : String(fieldValue ?? "");
+					});
+				}, 0);
+			})
+			.catch((caught) => { if ((caught as Error).name !== "AbortError") setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht geladen werden."); })
+			.finally(() => { if (!controller.signal.aborted) setIsLoadingRecipe(false); });
+		return () => controller.abort();
+	}, [editId]);
 
 	function recipeIngredients() { return ingredients.filter((item) => item.name.trim()).map((item) => ({ name: item.name.trim(), amount: Number(item.amount || 0), unit: item.unit.trim() })); }
 	function recipeSteps() { return steps.map((step) => step.trim()).filter(Boolean); }
@@ -109,22 +133,24 @@ export function RecipeEditor({ initialType = "meal" }: { initialType?: string })
 		const payload = { ...buildContext(), description, image_data: imageData || null, servings: number(form, "servings"), difficulty: value(form, "difficulty"), is_ai_generated: form.get("is_ai_generated") === "on" };
 		try {
 			const token = sessionStorage.getItem("crave_access_token");
-			const response = await fetch(`${apiUrl}/recipes`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
-			const result: { detail?: string } = await response.json().catch(() => ({}));
+			const shouldOverwrite = Boolean(editId) && !saveAsDuplicateRef.current;
+			const response = await fetch(shouldOverwrite ? `${apiUrl}/recipes/${editId}` : `${apiUrl}/recipes`, { method: shouldOverwrite ? "PUT" : "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
+			const result: { id?: string; detail?: string } = await response.json().catch(() => ({}));
 			if (!response.ok) throw new Error(result.detail ?? "Das Rezept konnte nicht gespeichert werden.");
-			router.push("/recipes");
+			router.push(result.id ? `/recipes/${result.id}` : "/recipes");
 		} catch (caught) { setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht gespeichert werden."); }
-		finally { setIsSaving(false); }
+		finally { saveAsDuplicateRef.current = false; setIsSaving(false); }
 	}
 
-	return <main className="flex-1 bg-linen px-5 py-8 pb-28 sm:px-8 sm:py-12"><form ref={formRef} onSubmit={submit} className="mx-auto max-w-5xl space-y-6"><Link href="/recipes" className="inline-flex text-sm font-bold text-caramel transition hover:text-espresso">← Zurück zu Rezepten</Link><header className="pb-2"><p className="text-[11px] font-bold tracking-[0.18em] text-caramel">NEUES REZEPT · {icon} {label.toUpperCase()}</p><h1 className="mt-3 text-4xl font-semibold tracking-[-0.065em] text-espresso">Rezept hinzufügen</h1></header>
+	if (isLoadingRecipe) return <main className="flex-1 bg-linen p-8 text-center text-bark">Rezept wird geladen…</main>;
+	return <main className="flex-1 bg-linen px-5 py-8 pb-28 sm:px-8 sm:py-12"><form ref={formRef} onSubmit={submit} className="mx-auto max-w-5xl space-y-6"><Link href={editId ? `/recipes/${editId}` : "/recipes"} className="inline-flex text-sm font-bold text-caramel transition hover:text-espresso">← {editId ? "Zurück zum Rezept" : "Zurück zu Rezepten"}</Link><header className="pb-2"><p className="text-[11px] font-bold tracking-[0.18em] text-caramel">{editId ? "REZEPT BEARBEITEN" : "NEUES REZEPT"} · {icon} {label.toUpperCase()}</p><h1 className="mt-3 text-4xl font-semibold tracking-[-0.065em] text-espresso">{editId ? "Rezept bearbeiten" : "Rezept hinzufügen"}</h1></header>
 		<Section title="Grundlagen"><div className="grid gap-5 sm:grid-cols-2"><div className="sm:col-span-2"><Field name="title" label="Rezeptname" required placeholder="z. B. Cremige Zitronenpasta" /></div><div className="sm:col-span-2"><div className="flex items-end gap-3"><label className="block flex-1 text-sm font-semibold text-espresso">Beschreibung<textarea value={description} onChange={(event) => setDescription(event.target.value)} required placeholder="Was macht dieses Rezept besonders?" className={`${inputClass} min-h-28 resize-y`} /></label><button type="button" onClick={() => generate("description")} disabled={isWriting} className="mb-0 grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-saffron text-xl transition hover:bg-caramel hover:text-white disabled:opacity-60" aria-label="Beschreibung mit KI erstellen">✦</button></div></div><Field name="tags" label="Tags" placeholder="z. B. schnell, vegetarisch" /><Select name="difficulty" label="Schwierigkeit" defaultValue="easy" values={["easy", "medium", "hard"]} /><Field name="servings" label="Portionen" type="number" required defaultValue={2} /><Field name="total_time_minutes" label="Gesamtzeit in Minuten" type="number" required defaultValue={20} /><Check name="is_ai_generated" label="KI-generiert" /></div></Section>
 		<Section title="Zutaten" hint="Füge jede Zutat einzeln hinzu."><div className="space-y-3">{ingredients.map((ingredient, index) => <div key={index} className="grid gap-3 rounded-2xl border border-espresso/10 bg-white/45 p-3 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_2.75rem]"><input value={ingredient.name} onChange={(event) => updateIngredient(index, "name", event.target.value)} required placeholder="Zutat" className="rounded-xl border border-espresso/10 bg-white/80 px-3 py-2.5 text-sm outline-none focus:border-caramel" /><input value={ingredient.amount} onChange={(event) => updateIngredient(index, "amount", event.target.value)} required type="number" min="0" step="0.1" placeholder="Menge" className="rounded-xl border border-espresso/10 bg-white/80 px-3 py-2.5 text-sm outline-none focus:border-caramel" /><input value={ingredient.unit} onChange={(event) => updateIngredient(index, "unit", event.target.value)} required placeholder="Einheit" className="rounded-xl border border-espresso/10 bg-white/80 px-3 py-2.5 text-sm outline-none focus:border-caramel" /><button type="button" onClick={() => removeIngredient(index)} className="grid h-10 w-10 place-items-center rounded-xl border border-espresso/10 text-lg text-bark transition hover:border-red-200 hover:bg-red-50 hover:text-red-700" aria-label={`Zutat ${index + 1} entfernen`}>−</button></div>)}</div><button type="button" onClick={() => setIngredients((items) => [...items, { name: "", amount: "", unit: "g" }])} className="mt-4 rounded-full border border-caramel px-4 py-2 text-sm font-bold text-caramel transition hover:bg-caramel hover:text-white">+ Zutat hinzufügen</button></Section>
 		<Section title="Zubereitung" hint="Ein Schritt pro Eintrag – klar und gut lesbar."><div className="space-y-3">{steps.map((step, index) => <div key={index} className="flex gap-3 rounded-2xl border border-espresso/10 bg-white/45 p-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-saffron/35 text-sm font-bold text-espresso">{index + 1}</span><input value={step} onChange={(event) => updateStep(index, event.target.value)} required placeholder={`Schritt ${index + 1} beschreiben`} className="min-w-0 flex-1 rounded-xl border border-espresso/10 bg-white/80 px-3 py-2.5 text-sm outline-none focus:border-caramel" /><button type="button" onClick={() => removeStep(index)} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-espresso/10 text-lg text-bark transition hover:border-red-200 hover:bg-red-50 hover:text-red-700" aria-label={`Schritt ${index + 1} entfernen`}>−</button></div>)}</div><button type="button" onClick={() => setSteps((items) => [...items, ""])} className="mt-4 rounded-full border border-caramel px-4 py-2 text-sm font-bold text-caramel transition hover:bg-caramel hover:text-white">+ Schritt hinzufügen</button></Section>
 		<Section title="Nährwerte" hint="Angaben pro Portion."><div className="grid gap-5 sm:grid-cols-4"><Field name="calories" label="Kalorien" type="number" required defaultValue={0} /><Field name="protein_g" label="Protein in g" type="number" step="0.1" required defaultValue={0} /><Field name="carbs_g" label="Kohlenhydrate in g" type="number" step="0.1" required defaultValue={0} /><Field name="fat_g" label="Fett in g" type="number" step="0.1" required defaultValue={0} /></div></Section>
 		<DetailFields type={type} />
 		<Section title="Bild"><div className="flex flex-wrap items-center gap-4"><button type="button" onClick={() => generate("image")} disabled={isImaging} className="flex min-w-44 justify-center rounded-full bg-espresso px-5 py-3 text-sm font-bold text-white transition hover:bg-caramel disabled:opacity-60">{isImaging ? <LoadingIndicator label="Bild wird erstellt…" light /> : "✦ Bild mit KI erstellen"}</button>{imageData && <Image src={imageData} alt="KI-Vorschau des Rezepts" width={96} height={96} unoptimized className="h-24 w-24 rounded-2xl object-cover" />}</div></Section>
-		{error && <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}<button disabled={isSaving} className="w-full rounded-full bg-caramel px-6 py-4 text-sm font-bold text-white shadow-[0_12px_24px_rgba(153,97,48,0.2)] transition hover:bg-espresso disabled:opacity-60">{isSaving ? "Rezept wird gespeichert…" : "Rezept speichern"}</button></form></main>;
+		{error && <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}<div className="grid gap-3 sm:grid-cols-2"><button type="submit" onClick={() => { saveAsDuplicateRef.current = false; }} disabled={isSaving} className="w-full rounded-full bg-caramel px-6 py-4 text-sm font-bold text-white shadow-[0_12px_24px_rgba(153,97,48,0.2)] transition hover:bg-espresso disabled:opacity-60">{isSaving ? "Rezept wird gespeichert…" : editId ? "Änderungen überschreiben" : "Rezept speichern"}</button>{editId && <button type="submit" onClick={() => { saveAsDuplicateRef.current = true; }} disabled={isSaving} className="w-full rounded-full border border-caramel px-6 py-4 text-sm font-bold text-caramel transition hover:bg-caramel hover:text-white disabled:opacity-60">Als Duplikat speichern</button>}</div></form></main>;
 }
 
 function DetailFields({ type }: { type: RecipeType }) {
