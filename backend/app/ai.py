@@ -5,14 +5,18 @@ import binascii
 import json
 import logging
 from typing import Any, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from openai import AsyncOpenAI, OpenAIError, RateLimitError
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import get_current_user
 from app.config import get_settings
-from app.models import User
+from app.db import get_session
+from app.models import RecipeSuggestionHistory, User
 from app.recipe_enums import RecipeType
 from app.recipe_schemas import RecipeCreate
 
@@ -45,12 +49,26 @@ class ImageResponse(BaseModel):
 
 class RecipeSuggestionRequest(BaseModel):
     prompt: str = Field(min_length=8, max_length=1_500)
-    history: list[str] = Field(default_factory=list, max_length=20)
+    history_id: UUID | None = None
+    load_more: bool = False
     exclude_titles: list[str] = Field(default_factory=list, max_length=100)
 
 
 class RecipeSuggestionsResponse(BaseModel):
+    history_id: UUID
     recipes: list[RecipeCreate] = Field(min_length=3, max_length=3)
+
+
+class SuggestionHistorySummary(BaseModel):
+    id: UUID
+    title: str
+    created_at: str
+    updated_at: str
+    iteration_count: int
+
+
+class SuggestionHistoryRead(SuggestionHistorySummary):
+    iterations: list[dict[str, Any]]
 
 
 class GeneratedIngredient(BaseModel):
@@ -166,13 +184,22 @@ async def generate_image(context: RecipeAiContext, _: User = Depends(get_current
 @router.post("/recipe-suggestions", response_model=RecipeSuggestionsResponse)
 async def generate_recipe_suggestions(
     request: RecipeSuggestionRequest,
-    _: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
 ) -> RecipeSuggestionsResponse:
     """Generate three complete, save-ready meal recipes from a culinary mood prompt."""
+    history: RecipeSuggestionHistory | None = None
+    if request.history_id is not None:
+        history = await session.scalar(select(RecipeSuggestionHistory).where(RecipeSuggestionHistory.id == request.history_id, RecipeSuggestionHistory.user_id == user.id))
+        if history is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Suchverlauf nicht gefunden")
+    if request.load_more and history is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Weitere Vorschläge benötigen einen bestehenden Suchverlauf")
+    previous_prompts = [str(item.get("prompt", "")) for item in history.iterations] if history is not None else []
     first_batch_guidance = (
         "Dies ist die erste Vorschlagsrunde: Schlage zuerst die klassische, allgemein erwartete Grundversion des gewünschten Gerichts vor. "
         "Keine Varianten wie vegan, glutenfrei, ohne Ei, im Glas, mit ungewöhnlichen Früchten oder Fusion-Versionen, sofern der Nutzer sie nicht ausdrücklich verlangt."
-        if not request.history and not request.exclude_titles
+        if not previous_prompts and not request.exclude_titles
         else "Die Anfrage baut auf vorherigen Wünschen auf; variiere sinnvoll, ohne bereits gezeigte Titel zu wiederholen."
     )
     prompt = f"""Du bist der kulinarische Ideengeber für die deutsche Koch-App Crave.
@@ -180,7 +207,7 @@ Erstelle exakt drei unterschiedliche, realistische Rezeptvorschläge als valides
 Die Beschreibungen müssen natürliches Deutsch sein, zwei kurze Sätze enthalten und ohne Marketingfloskeln auskommen. Zutaten brauchen präzise Namen, exakte Mengen und passende Einheiten. Erkläre die Zubereitung in klaren, ausführbaren Einzelschritten: Zutatenzustand, Reihenfolge, Hitze, Dauer, sichtbare Anzeichen und wichtige Zwischenschritte, soweit sie für ein verlässliches Ergebnis nötig sind. Verwende nur plausible Nährwerte und Zeitangaben. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
 Berücksichtige alle vorherigen Wünsche als zusammenhängenden Verlauf. Der neueste Wunsch konkretisiert oder verändert die bisherigen Wünsche.
 {first_batch_guidance}
-Bisherige Wünsche: {json.dumps(request.history, ensure_ascii=False)}
+Bisherige Wünsche: {json.dumps(previous_prompts, ensure_ascii=False)}
 Bereits gezeigte Titel, die nicht erneut vorgeschlagen werden dürfen: {json.dumps(request.exclude_titles, ensure_ascii=False)}
 Nutzerwunsch: {request.prompt}"""
     try:
@@ -193,13 +220,48 @@ Nutzerwunsch: {request.prompt}"""
         if response.output_parsed is None:
             raise ValueError("OpenAI did not return a structured recipe response")
         recipes = [RecipeCreate.model_validate(recipe.model_dump()) for recipe in response.output_parsed.recipes]
-        return RecipeSuggestionsResponse(recipes=recipes)
+        serialised_recipes = [recipe.model_dump(mode="json") for recipe in recipes]
+        if history is None:
+            history = RecipeSuggestionHistory(user_id=user.id, title=request.prompt, iterations=[])
+            session.add(history)
+        if request.load_more:
+            iterations = [*history.iterations]
+            last_iteration = dict(iterations[-1])
+            last_iteration["recipes"] = [*last_iteration.get("recipes", []), *serialised_recipes]
+            iterations[-1] = last_iteration
+            history.iterations = iterations
+        else:
+            history.iterations = [*history.iterations, {"prompt": request.prompt, "recipes": serialised_recipes}]
+        await session.commit()
+        await session.refresh(history)
+        return RecipeSuggestionsResponse(history_id=history.id, recipes=recipes)
     except ValidationError as error:
         logger.warning("OpenAI recipe suggestions violated the recipe schema: %s", error.errors())
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Die KI hat unvollständige Rezeptdaten zurückgegeben. Bitte versuche es noch einmal.") from None
     except (OpenAIError, json.JSONDecodeError, ValueError):
         logger.exception("OpenAI recipe suggestion generation failed")
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Rezeptvorschläge sind momentan nicht verfügbar.") from None
+
+
+@router.get("/suggestion-history", response_model=list[SuggestionHistorySummary])
+async def list_suggestion_history(
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> list[SuggestionHistorySummary]:
+    histories = (await session.scalars(select(RecipeSuggestionHistory).where(RecipeSuggestionHistory.user_id == user.id).order_by(RecipeSuggestionHistory.updated_at.desc()).limit(20))).all()
+    return [SuggestionHistorySummary(id=item.id, title=item.title, created_at=item.created_at.isoformat(), updated_at=item.updated_at.isoformat(), iteration_count=len(item.iterations)) for item in histories]
+
+
+@router.get("/suggestion-history/{history_id}", response_model=SuggestionHistoryRead)
+async def get_suggestion_history(
+    history_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    user: User = Depends(get_current_user),
+) -> SuggestionHistoryRead:
+    history = await session.scalar(select(RecipeSuggestionHistory).where(RecipeSuggestionHistory.id == history_id, RecipeSuggestionHistory.user_id == user.id))
+    if history is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Suchverlauf nicht gefunden")
+    return SuggestionHistoryRead(id=history.id, title=history.title, created_at=history.created_at.isoformat(), updated_at=history.updated_at.isoformat(), iteration_count=len(history.iterations), iterations=history.iterations)
 
 
 @router.post("/recipe-chat", response_model=RecipeChatResponse)

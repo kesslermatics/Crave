@@ -3,6 +3,7 @@ import Link from "next/link";
 const links = [
     { href: "/", label: "Start" },
     { href: "/recipes", label: "Rezepte" },
+    { href: "/?show-history=1", label: "Verlauf" },
 ];
 
 export function Logo() {
@@ -38,6 +39,7 @@ export function MobileNav() {
     const items = [
         { href: "/", icon: "⌂", label: "Start" },
         { href: "/recipes", icon: "◫", label: "Rezepte" },
+        { href: "/?show-history=1", icon: "◷", label: "Verlauf" },
     ];
     return (
         <nav aria-label="Schnellnavigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-espresso/8 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
