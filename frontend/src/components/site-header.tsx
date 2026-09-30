@@ -8,7 +8,7 @@ const links = [
 export function Logo() {
     return (
         <a href="#top" className="flex items-center gap-2 font-bold tracking-[-0.07em]" aria-label="Crave home">
-            <span className="grid h-8 w-8 place-items-center rounded-xl bg-saffron text-base">✦</span>
+            <span className="grid h-8 w-8 place-items-center rounded-xl bg-saffron text-[17px] shadow-sm" aria-hidden="true">🍳</span>
             <span className="text-2xl">crave</span>
         </a>
     );

@@ -12,7 +12,7 @@ export function AuthPage({ mode }: AuthPageProps) {
         <main className="grid min-h-screen bg-linen lg:grid-cols-2">
             <section className="hidden bg-espresso p-12 text-white lg:flex lg:flex-col lg:justify-between">
                 <Link href="/" className="flex items-center gap-2 self-start font-bold tracking-[-0.07em]">
-                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-saffron text-lg text-espresso">✦</span>
+                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-saffron text-[19px] shadow-sm" aria-hidden="true">🍳</span>
                     <span className="text-3xl">crave</span>
                 </Link>
                 <div className="max-w-md">
@@ -25,7 +25,7 @@ export function AuthPage({ mode }: AuthPageProps) {
             <section className="flex items-center justify-center px-5 py-10 sm:px-8">
                 <div className="w-full max-w-md">
                     <Link href="/" className="flex items-center gap-2 font-bold tracking-[-0.07em] lg:hidden">
-                        <span className="grid h-8 w-8 place-items-center rounded-xl bg-saffron text-base">✦</span>
+                        <span className="grid h-8 w-8 place-items-center rounded-xl bg-saffron text-[17px] shadow-sm" aria-hidden="true">🍳</span>
                         <span className="text-2xl">crave</span>
                     </Link>
                     <p className="mt-12 text-[11px] font-bold tracking-[0.18em] text-caramel">{isSignup ? "JOIN CRAVE" : "WELCOME BACK"}</p>

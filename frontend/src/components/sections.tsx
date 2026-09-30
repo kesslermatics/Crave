@@ -124,7 +124,7 @@ export function Footer() {
     return (
         <footer className="border-t border-espresso/8 pb-28 md:pb-0">
             <div className="mx-auto flex max-w-7xl flex-col gap-2 px-5 py-8 text-xs text-bark sm:flex-row sm:items-center sm:justify-between sm:px-8">
-                <p className="font-bold text-espresso">crave</p>
+                <p className="flex items-center gap-1.5 font-bold text-espresso"><span className="grid h-5 w-5 place-items-center rounded-md bg-saffron text-xs" aria-hidden="true">🍳</span>crave</p>
                 <p>AI-powered culinary engine · Built with Next.js, FastAPI &amp; Gemini</p>
             </div>
         </footer>
