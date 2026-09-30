@@ -169,10 +169,17 @@ async def generate_recipe_suggestions(
     _: User = Depends(get_current_user),
 ) -> RecipeSuggestionsResponse:
     """Generate three complete, save-ready meal recipes from a culinary mood prompt."""
+    first_batch_guidance = (
+        "Dies ist die erste Vorschlagsrunde: Schlage zuerst die klassische, allgemein erwartete Grundversion des gewünschten Gerichts vor. "
+        "Keine Varianten wie vegan, glutenfrei, ohne Ei, im Glas, mit ungewöhnlichen Früchten oder Fusion-Versionen, sofern der Nutzer sie nicht ausdrücklich verlangt."
+        if not request.history and not request.exclude_titles
+        else "Die Anfrage baut auf vorherigen Wünschen auf; variiere sinnvoll, ohne bereits gezeigte Titel zu wiederholen."
+    )
     prompt = f"""Du bist der kulinarische Ideengeber für die deutsche Koch-App Crave.
 Erstelle exakt drei unterschiedliche, realistische Rezeptvorschläge als valides JSON-Objekt mit genau dem Schlüssel "recipes". Jeder Eintrag muss alle Felder eines RecipeCreate-Objekts enthalten und sofort speicherbar sein. Verwende ausschließlich recipe_type "meal", difficulty "easy", "medium" oder "hard" sowie die passenden meal-details: cooking_method, required_equipment, prep_time_minutes, cook_time_minutes, meal_prep_friendly, fridge_life_days, freezable, spiciness_level, volume_index und served_temperature. Setze image_data auf null und is_ai_generated auf true.
-Die Beschreibungen müssen natürliches Deutsch sein, zwei kurze Sätze enthalten und ohne Marketingfloskeln auskommen. Zutaten brauchen name, amount und unit; die Zubereitung besteht aus klaren einzelnen Schritten. Verwende nur plausible Nährwerte und Zeitangaben. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
+Die Beschreibungen müssen natürliches Deutsch sein, zwei kurze Sätze enthalten und ohne Marketingfloskeln auskommen. Zutaten brauchen präzise Namen, exakte Mengen und passende Einheiten. Erkläre die Zubereitung in klaren, ausführbaren Einzelschritten: Zutatenzustand, Reihenfolge, Hitze, Dauer, sichtbare Anzeichen und wichtige Zwischenschritte, soweit sie für ein verlässliches Ergebnis nötig sind. Verwende nur plausible Nährwerte und Zeitangaben. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
 Berücksichtige alle vorherigen Wünsche als zusammenhängenden Verlauf. Der neueste Wunsch konkretisiert oder verändert die bisherigen Wünsche.
+{first_batch_guidance}
 Bisherige Wünsche: {json.dumps(request.history, ensure_ascii=False)}
 Bereits gezeigte Titel, die nicht erneut vorgeschlagen werden dürfen: {json.dumps(request.exclude_titles, ensure_ascii=False)}
 Nutzerwunsch: {request.prompt}"""
