@@ -4,7 +4,7 @@ import base64
 import binascii
 import json
 import logging
-from typing import Annotated, Any, Literal, Union
+from typing import Any, Literal, Union
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -163,7 +163,10 @@ class GeneratedBasicRecipe(GeneratedRecipeBase):
     details: GeneratedBasicDetails
 
 
-GeneratedRecipe = Annotated[Union[GeneratedMealRecipe, GeneratedBakingRecipe, GeneratedDrinkRecipe, GeneratedBasicRecipe], Field(discriminator="recipe_type")]
+# The Responses API permits `anyOf` in array item schemas but rejects Pydantic's
+# discriminator-generated `oneOf` form. Recipe type literals still make the
+# variants unambiguous during Pydantic validation.
+GeneratedRecipe = Union[GeneratedMealRecipe, GeneratedBakingRecipe, GeneratedDrinkRecipe, GeneratedBasicRecipe]
 
 
 class GeneratedRecipeSuggestions(BaseModel):
