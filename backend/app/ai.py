@@ -4,7 +4,7 @@ import base64
 import binascii
 import json
 import logging
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, Union
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -90,10 +90,45 @@ class GeneratedMealDetails(BaseModel):
     served_temperature: Literal["hot", "warm", "cold"]
 
 
-class GeneratedRecipe(BaseModel):
+class GeneratedBakingDetails(BaseModel):
+    oven_temperature_c: int = Field(ge=0, le=350)
+    oven_mode: Literal["conventional", "fan", "hot_air"]
+    preheat_required: bool
+    pan_type: str = Field(min_length=1, max_length=80)
+    pan_size_cm: float = Field(gt=0, le=200)
+    resting_time_minutes: int = Field(ge=0, le=10_080)
+    cooling_time_minutes: int = Field(ge=0, le=10_080)
+    dough_type: str = Field(min_length=1, max_length=80)
+    special_techniques: list[str] = Field(max_length=20)
+
+
+class GeneratedDrinkDetails(BaseModel):
+    prep_method: Literal["blended", "shaken", "stirred", "brewed", "steeped", "built_in_glass"]
+    required_equipment: list[str] = Field(max_length=20)
+    served_temperature: Literal["hot", "iced", "chilled", "room_temperature"]
+    ice_type: Literal["none", "cubes", "crushed"]
+    abv_percent: float = Field(ge=0, le=100)
+    caffeine_level: Literal["none", "low", "high"]
+    glass_type: str = Field(min_length=1, max_length=80)
+    volume_ml: int = Field(gt=0, le=10_000)
+
+
+class GeneratedBasicDetails(BaseModel):
+    yield_amount: float = Field(gt=0, le=100_000)
+    yield_unit: str = Field(min_length=1, max_length=32)
+    serving_size_amount: float = Field(gt=0, le=100_000)
+    serving_size_unit: str = Field(min_length=1, max_length=32)
+    storage_method: Literal["fridge", "pantry", "freezer"]
+    shelf_life_days: int = Field(ge=0, le=3_650)
+    storage_tips: list[str] = Field(max_length=20)
+    component_type: str = Field(min_length=1, max_length=80)
+    pairs_well_with: list[str] = Field(max_length=50)
+    resting_time_minutes: int = Field(ge=0, le=10_080)
+
+
+class GeneratedRecipeBase(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1, max_length=2_000)
-    recipe_type: Literal["meal"]
     image_data: None
     servings: int = Field(gt=0, le=100)
     total_time_minutes: int = Field(ge=0, le=10_080)
@@ -104,9 +139,31 @@ class GeneratedRecipe(BaseModel):
     fat_g: float = Field(ge=0, le=10_000)
     ingredients: list[GeneratedIngredient] = Field(min_length=1, max_length=100)
     instructions: list[str] = Field(min_length=1, max_length=100)
-    details: GeneratedMealDetails
     is_ai_generated: bool
     tags: list[str] = Field(max_length=30)
+
+
+class GeneratedMealRecipe(GeneratedRecipeBase):
+    recipe_type: Literal["meal"]
+    details: GeneratedMealDetails
+
+
+class GeneratedBakingRecipe(GeneratedRecipeBase):
+    recipe_type: Literal["baking"]
+    details: GeneratedBakingDetails
+
+
+class GeneratedDrinkRecipe(GeneratedRecipeBase):
+    recipe_type: Literal["drink"]
+    details: GeneratedDrinkDetails
+
+
+class GeneratedBasicRecipe(GeneratedRecipeBase):
+    recipe_type: Literal["basic"]
+    details: GeneratedBasicDetails
+
+
+GeneratedRecipe = Annotated[Union[GeneratedMealRecipe, GeneratedBakingRecipe, GeneratedDrinkRecipe, GeneratedBasicRecipe], Field(discriminator="recipe_type")]
 
 
 class GeneratedRecipeSuggestions(BaseModel):
@@ -203,7 +260,7 @@ async def generate_recipe_suggestions(
         else "Die Anfrage baut auf vorherigen Wünschen auf; variiere sinnvoll, ohne bereits gezeigte Titel zu wiederholen."
     )
     prompt = f"""Du bist der kulinarische Ideengeber für die deutsche Koch-App Crave.
-Erstelle exakt drei unterschiedliche, realistische Rezeptvorschläge als valides JSON-Objekt mit genau dem Schlüssel "recipes". Jeder Eintrag muss alle Felder eines RecipeCreate-Objekts enthalten und sofort speicherbar sein. Verwende ausschließlich recipe_type "meal", difficulty "easy", "medium" oder "hard" sowie die passenden meal-details: cooking_method, required_equipment, prep_time_minutes, cook_time_minutes, meal_prep_friendly, fridge_life_days, freezable, spiciness_level, volume_index und served_temperature. Setze image_data auf null und is_ai_generated auf true.
+Erstelle exakt drei unterschiedliche, realistische Rezeptvorschläge als valides JSON-Objekt mit genau dem Schlüssel "recipes". Jeder Eintrag muss alle Felder eines RecipeCreate-Objekts enthalten und sofort speicherbar sein. Wähle recipe_type passend: "baking" für Brownies, Kuchen, Kekse, Brot, Brötchen, Muffins, Gebäck und andere Ofenbackwaren; "drink" für Kaffee, Tee, Smoothies, Shakes, Cocktails und andere Getränke; "basic" für Saucen, Dips, Dressings, Fonds, Teige, Würzmischungen und andere Grundrezepte; "meal" für herzhafte Gerichte. Für "meal" verwende cooking_method, required_equipment, prep_time_minutes, cook_time_minutes, meal_prep_friendly, fridge_life_days, freezable, spiciness_level, volume_index und served_temperature. Für "baking" verwende oven_temperature_c, oven_mode, preheat_required, pan_type, pan_size_cm, resting_time_minutes, cooling_time_minutes, dough_type und special_techniques. Für "drink" verwende prep_method, required_equipment, served_temperature, ice_type, abv_percent, caffeine_level, glass_type und volume_ml. Für "basic" verwende yield_amount, yield_unit, serving_size_amount, serving_size_unit, storage_method, shelf_life_days, storage_tips, component_type, pairs_well_with und resting_time_minutes. Verwende ausschließlich difficulty "easy", "medium" oder "hard". Setze image_data auf null und is_ai_generated auf true.
 Die Beschreibungen müssen natürliches Deutsch sein, zwei kurze Sätze enthalten und ohne Marketingfloskeln auskommen. Zutaten brauchen präzise Namen, exakte Mengen und passende Einheiten. Erkläre die Zubereitung in klaren, ausführbaren Einzelschritten: Zutatenzustand, Reihenfolge, Hitze, Dauer, sichtbare Anzeichen und wichtige Zwischenschritte, soweit sie für ein verlässliches Ergebnis nötig sind. Verwende nur plausible Nährwerte und Zeitangaben. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
 Berücksichtige alle vorherigen Wünsche als zusammenhängenden Verlauf. Der neueste Wunsch konkretisiert oder verändert die bisherigen Wünsche.
 {first_batch_guidance}

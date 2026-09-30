@@ -36,3 +36,13 @@ body {
   color: var(--foreground);
   font-family: var(--font-sora), sans-serif;
 }
+
+textarea {
+  field-sizing: content;
+  overflow-y: hidden;
+}
+
+input[placeholder="Zutat"] {
+  field-sizing: content;
+  min-width: 0;
+}

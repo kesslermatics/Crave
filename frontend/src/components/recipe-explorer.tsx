@@ -110,11 +110,11 @@ export function RecipeExplorer() {
                         <Link href={`/recipes/new?type=${category.type}`} className="mt-6 inline-block rounded-full bg-caramel px-5 py-3 text-sm font-bold text-white hover:bg-espresso">Rezept hinzufügen</Link>
                     </div>
                 ) : (
-                    <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="mt-8 grid gap-4 lg:grid-cols-2">
                         {recipes.map((recipe, index) => (
-                            <Link key={recipe.id} href={`/recipes/${recipe.id}`} className="block overflow-hidden rounded-3xl border border-espresso/8 bg-white shadow-[0_10px_25px_rgba(66,52,33,0.06)] transition hover:-translate-y-1 hover:shadow-[0_16px_32px_rgba(66,52,33,0.12)]">
-                                <div className={`h-36 bg-gradient-to-br ${gradients[index % gradients.length]}`} style={recipe.image_data ? { backgroundImage: `url(${recipe.image_data})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined} />
-                                <div className="p-5"><h2 className="text-lg font-semibold tracking-[-0.04em] text-espresso">{recipe.title}</h2><p className="mt-1 line-clamp-2 text-xs leading-5 text-bark">{recipe.description}</p><p className="mt-4 text-xs font-bold text-caramel">{formatDuration(recipe.total_time_minutes)} · {recipe.calories} kcal · {recipe.protein_g} g Protein</p></div>
+                            <Link key={recipe.id} href={`/recipes/${recipe.id}`} className="flex min-h-40 overflow-hidden rounded-3xl border border-espresso/8 bg-white shadow-[0_10px_25px_rgba(66,52,33,0.06)] transition hover:-translate-y-1 hover:shadow-[0_16px_32px_rgba(66,52,33,0.12)]">
+                                <div className={`w-32 shrink-0 bg-gradient-to-br sm:w-40 ${gradients[index % gradients.length]}`} style={recipe.image_data ? { backgroundImage: `url(${recipe.image_data})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined} />
+                                <div className="flex min-w-0 flex-1 flex-col p-5"><h2 className="text-xl font-semibold tracking-[-0.045em] text-espresso">{recipe.title}</h2><p className="mt-2 line-clamp-3 text-sm leading-6 text-bark">{recipe.description}</p><p className="mt-auto pt-4 text-xs font-bold text-caramel">{formatDuration(recipe.total_time_minutes)} · {recipe.calories} kcal · {recipe.protein_g} g Protein</p></div>
                             </Link>
                         ))}
                     </div>

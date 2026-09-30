@@ -59,6 +59,7 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 	const [isImaging, setIsImaging] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const [isLoadingRecipe, setIsLoadingRecipe] = useState(Boolean(editId));
+	const [prefillValues, setPrefillValues] = useState<Record<string, unknown> | null>(null);
 	const saveAsDuplicateRef = useRef(false);
 	const [error, setError] = useState("");
 
@@ -73,20 +74,25 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 				setDescription(recipe.description ?? ""); setImageData(recipe.image_data ?? "");
 				setIngredients(recipe.ingredients?.map((ingredient: { name: string; amount: number; unit: string }) => ({ ...ingredient, amount: String(ingredient.amount) })) ?? [{ name: "", amount: "", unit: "g" }]);
 				setSteps(recipe.instructions?.length ? recipe.instructions : [""]);
-				window.setTimeout(() => {
-					const values = { ...recipe, ...recipe.details, tags: recipe.tags?.join(", ") ?? "" } as Record<string, unknown>;
-					Object.entries(values).forEach(([name, fieldValue]) => {
-						const field = formRef.current?.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
-						if (!field) return;
-						if (field instanceof HTMLInputElement && field.type === "checkbox") field.checked = Boolean(fieldValue);
-						else field.value = Array.isArray(fieldValue) ? fieldValue.join(", ") : String(fieldValue ?? "");
-					});
-				}, 0);
+				setPrefillValues({ ...recipe, ...recipe.details, tags: recipe.tags?.join(", ") ?? "" });
 			})
 			.catch((caught) => { if ((caught as Error).name !== "AbortError") setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht geladen werden."); })
 			.finally(() => { if (!controller.signal.aborted) setIsLoadingRecipe(false); });
 		return () => controller.abort();
 	}, [editId]);
+
+	useEffect(() => {
+		if (!prefillValues || isLoadingRecipe) return;
+		const applyPrefill = window.setTimeout(() => {
+			Object.entries(prefillValues).forEach(([name, fieldValue]) => {
+				const field = formRef.current?.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
+				if (!field) return;
+				if (field instanceof HTMLInputElement && field.type === "checkbox") field.checked = Boolean(fieldValue);
+				else field.value = Array.isArray(fieldValue) ? fieldValue.join(", ") : String(fieldValue ?? "");
+			});
+		}, 0);
+		return () => window.clearTimeout(applyPrefill);
+	}, [isLoadingRecipe, prefillValues, type]);
 
 	function recipeIngredients() { return ingredients.filter((item) => item.name.trim()).map((item) => ({ name: item.name.trim(), amount: Number(item.amount || 0), unit: item.unit.trim() })); }
 	function recipeSteps() { return steps.map((step) => step.trim()).filter(Boolean); }

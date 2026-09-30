@@ -181,3 +181,17 @@ async def update_recipe(
     await session.commit()
     await session.refresh(recipe, attribute_names=["tags"])
     return serialise_recipe(recipe)
+
+
+@router.delete("/{recipe_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_recipe(
+    recipe_id: UUID,
+    session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_user),
+) -> None:
+    """Permanently remove a saved recipe."""
+    recipe = await session.get(Recipe, recipe_id)
+    if recipe is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rezept nicht gefunden")
+    await session.delete(recipe)
+    await session.commit()
