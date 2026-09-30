@@ -1,57 +1,63 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { apiUrl } from "@/lib/api";
 
 type Suggestion = {
-    title: string;
-    description: string;
-    recipe_type: string;
-    total_time_minutes: number;
-    calories: number;
-    protein_g: number;
-    carbs_g: number;
-    fat_g: number;
-    tags: string[];
-    servings: number;
-    difficulty: string;
-    ingredients: { name: string; amount: number; unit: string }[];
-    instructions: string[];
-    details: Record<string, unknown>;
-    is_ai_generated: boolean;
-    image_data: string | null;
+    title: string; description: string; recipe_type: string; total_time_minutes: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; tags: string[]; servings: number; difficulty: string; ingredients: { name: string; amount: number; unit: string }[]; instructions: string[]; details: Record<string, unknown>; is_ai_generated: boolean; image_data: string | null;
 };
+type Iteration = { prompt: string; recipes: Suggestion[]; createdAt: string };
 
-const example = "Es regnet, ich bin gestresst und brauche in 20 Minuten etwas Tröstliches mit Käse.";
+const historyKey = "crave_suggestion_history";
+const tooltip = "Beschreibe Stimmung, Zeit, Zutaten oder dein Ziel. Zum Beispiel: Es regnet, ich bin gestresst und brauche in 20 Minuten etwas Tröstliches mit Käse.";
 
 export function HomeSuggestions() {
     const router = useRouter();
-    const [prompt, setPrompt] = useState(example);
-    const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+    const [prompt, setPrompt] = useState("");
+    const [history, setHistory] = useState<Iteration[]>([]);
+    const [activeIteration, setActiveIteration] = useState(-1);
+    const [isRestoring, setIsRestoring] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
 
+    useEffect(() => {
+        const restore = window.setTimeout(() => {
+            try {
+                const saved = localStorage.getItem(historyKey);
+                if (saved) { const parsed = JSON.parse(saved) as Iteration[]; setHistory(parsed); setActiveIteration(parsed.length - 1); }
+            } catch { localStorage.removeItem(historyKey); }
+            setIsRestoring(false);
+        }, 0);
+        return () => window.clearTimeout(restore);
+    }, []);
+
+    const active = activeIteration >= 0 ? history[activeIteration] : undefined;
+
     async function submit() {
-        if (prompt.trim().length < 8) { setError("Beschreibe kurz, worauf du gerade Lust hast."); return; }
+        const request = prompt.trim();
+        if (request.length < 8) { setError("Beschreibe kurz, worauf du gerade Lust hast."); return; }
         setError(""); setIsLoading(true);
         try {
             const token = sessionStorage.getItem("crave_access_token");
-            const response = await fetch(`${apiUrl}/ai/recipe-suggestions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ prompt }) });
+            const context = history.map((entry) => entry.prompt);
+            const response = await fetch(`${apiUrl}/ai/recipe-suggestions`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ prompt: request, history: context }) });
             const result: { recipes?: Suggestion[]; detail?: string } = await response.json().catch(() => ({}));
-            if (!response.ok || !result.recipes) throw new Error(result.detail ?? "Die Vorschläge konnten nicht erstellt werden.");
-            setSuggestions(result.recipes);
-            sessionStorage.setItem("crave_recipe_suggestions", JSON.stringify(result.recipes));
-        } catch (caught) { setError(caught instanceof Error ? caught.message : "Die Vorschläge konnten nicht erstellt werden."); }
+            if (!response.ok || !result.recipes || result.recipes.length !== 10) throw new Error(result.detail ?? "Die Rezeptideen konnten nicht erstellt werden.");
+            const next = [...history.slice(-19), { prompt: request, recipes: result.recipes, createdAt: new Date().toISOString() }];
+            setHistory(next); setActiveIteration(next.length - 1); setPrompt("");
+            localStorage.setItem(historyKey, JSON.stringify(next));
+        } catch (caught) { setError(caught instanceof Error ? caught.message : "Die Rezeptideen konnten nicht erstellt werden."); }
         finally { setIsLoading(false); }
     }
 
     function openSuggestion(index: number) {
-        sessionStorage.setItem("crave_selected_suggestion", JSON.stringify(suggestions[index]));
+        if (!active) return;
+        sessionStorage.setItem("crave_selected_suggestion", JSON.stringify(active.recipes[index]));
         router.push("/suggestions/auswahl");
     }
 
-    return <main className="min-h-[calc(100vh-4rem)] bg-linen px-5 py-10 pb-28 sm:px-8 sm:py-16"><div className="mx-auto max-w-5xl"><section className="mx-auto max-w-3xl text-center"><p className="text-[11px] font-bold tracking-[0.2em] text-caramel">WORAUF HAST DU LUST?</p><h1 className="mt-4 text-4xl font-semibold tracking-[-0.07em] text-espresso sm:text-6xl">Sag Crave, wie sich dein Essen anfühlen soll.</h1><p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-bark sm:text-base">Beschreibe Stimmung, Zeit, Zutaten oder dein Ziel – Crave findet passende Ideen für genau diesen Moment.</p><div className="mt-8 text-left"><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} className="min-h-32 w-full resize-y rounded-[2rem] border border-espresso/10 bg-white/85 px-5 py-4 text-sm leading-6 text-espresso outline-none transition placeholder:text-bark/45 focus:border-caramel focus:ring-4 focus:ring-saffron/25" aria-label="Deinen Essenswunsch beschreiben" /><button type="button" onClick={submit} disabled={isLoading} className="mt-4 w-full rounded-full bg-caramel px-6 py-4 text-sm font-bold text-white shadow-[0_12px_24px_rgba(153,97,48,0.18)] transition hover:bg-espresso disabled:opacity-60">{isLoading ? "Crave sucht passende Ideen…" : "5 Rezeptideen finden"}</button></div>{error && <p role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left text-sm font-medium text-red-800">{error}</p>}</section>
-        {suggestions.length > 0 && <section className="mt-14"><div className="flex items-end justify-between gap-4"><div><p className="text-[11px] font-bold tracking-[0.18em] text-caramel">FÜR DICH AUSGEWÄHLT</p><h2 className="mt-2 text-3xl font-semibold tracking-[-0.06em] text-espresso">Fünf Ideen für deinen Moment</h2></div><span className="hidden text-sm text-bark sm:block">Wähle eine Idee für die vollständige Ansicht.</span></div><div className="mt-7 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{suggestions.map((recipe, index) => <button key={`${recipe.title}-${index}`} onClick={() => openSuggestion(index)} className="group overflow-hidden rounded-[2rem] border border-espresso/10 bg-white text-left shadow-[0_10px_28px_rgba(66,52,33,0.07)] transition hover:-translate-y-1 hover:shadow-[0_18px_36px_rgba(66,52,33,0.14)]"><div className="h-28 bg-gradient-to-br from-saffron via-caramel to-espresso p-5"><span className="rounded-full bg-white/20 px-3 py-1 text-[10px] font-bold tracking-[0.12em] text-white">IDEEN {index + 1}</span></div><div className="p-5"><h3 className="text-xl font-semibold tracking-[-0.045em] text-espresso">{recipe.title}</h3><p className="mt-2 line-clamp-2 text-sm leading-6 text-bark">{recipe.description}</p><p className="mt-5 text-xs font-bold text-caramel">{recipe.total_time_minutes} Min. · {recipe.calories} kcal · {recipe.protein_g} g Protein</p></div></button>)}</div></section>}</div></main>;
+    return <main className="min-h-[calc(100vh-4rem)] bg-linen px-5 py-10 pb-28 sm:px-8 sm:py-16"><div className="mx-auto max-w-5xl"><section className="mx-auto max-w-3xl text-center"><div className="flex items-center justify-center gap-2"><p className="text-[11px] font-bold tracking-[0.2em] text-caramel">WORAUF HAST DU LUST?</p><span className="group relative"><button type="button" className="grid h-5 w-5 place-items-center rounded-full border border-caramel text-[11px] font-bold text-caramel" aria-label="Beispiel für eine Anfrage">i</button><span role="tooltip" className="pointer-events-none absolute left-1/2 top-7 z-20 w-72 -translate-x-1/2 rounded-2xl bg-espresso px-3 py-2 text-left text-xs font-medium leading-5 text-white opacity-0 shadow-xl transition group-hover:opacity-100 group-focus-within:opacity-100">{tooltip}</span></span></div><h1 className="mt-4 text-4xl font-semibold tracking-[-0.07em] text-espresso sm:text-6xl">Sag Crave, wie sich dein Essen anfühlen soll.</h1><div className="mt-8 text-left"><textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="Beschreibe deinen Wunsch…" className="min-h-32 w-full resize-y rounded-[2rem] border border-espresso/10 bg-white/85 px-5 py-4 text-sm leading-6 text-espresso outline-none transition placeholder:text-bark/45 focus:border-caramel focus:ring-4 focus:ring-saffron/25" aria-label="Deinen Essenswunsch beschreiben" /><button type="button" onClick={submit} disabled={isLoading || isRestoring} className="mt-4 w-full rounded-full bg-caramel px-6 py-4 text-sm font-bold text-white shadow-[0_12px_24px_rgba(153,97,48,0.18)] transition hover:bg-espresso disabled:opacity-60">{isLoading ? "Crave stellt 10 Ideen zusammen…" : "10 Rezeptideen finden"}</button></div>{error && <p role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left text-sm font-medium text-red-800">{error}</p>}</section>
+        {history.length > 0 && <section className="mt-12"><div className="overflow-x-auto pb-2"><div className="flex min-w-max gap-2">{history.map((entry, index) => <button key={`${entry.createdAt}-${index}`} onClick={() => setActiveIteration(index)} className={`rounded-full px-4 py-2 text-sm font-bold transition ${index === activeIteration ? "bg-espresso text-white" : "border border-espresso/10 bg-white text-bark hover:border-caramel"}`}>Runde {index + 1}</button>)}</div></div>{active && <><div className="mt-7 flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><p className="text-[11px] font-bold tracking-[0.18em] text-caramel">RUNDE {activeIteration + 1} · 10 VORSCHLÄGE</p><h2 className="mt-2 text-3xl font-semibold tracking-[-0.06em] text-espresso">„{active.prompt}“</h2></div><span className="text-sm text-bark">Wähle ein Rezept für die vollständige Ansicht.</span></div><div className="mt-7 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{active.recipes.map((recipe, index) => <button key={`${recipe.title}-${index}`} onClick={() => openSuggestion(index)} className="group overflow-hidden rounded-[2rem] border border-espresso/10 bg-white text-left shadow-[0_10px_28px_rgba(66,52,33,0.07)] transition hover:-translate-y-1 hover:shadow-[0_18px_36px_rgba(66,52,33,0.14)]"><div className="h-28 bg-gradient-to-br from-saffron via-caramel to-espresso p-5"><span className="rounded-full bg-white/20 px-3 py-1 text-[10px] font-bold tracking-[0.12em] text-white">IDEE {index + 1}</span></div><div className="p-5"><h3 className="text-xl font-semibold tracking-[-0.045em] text-espresso">{recipe.title}</h3><p className="mt-2 line-clamp-2 text-sm leading-6 text-bark">{recipe.description}</p><p className="mt-5 text-xs font-bold text-caramel">{recipe.total_time_minutes} Min. · {recipe.calories} kcal · {recipe.protein_g} g Protein</p></div></button>)}</div><div className="mt-10 rounded-[2rem] border border-espresso/10 bg-sand/30 p-5 sm:p-7"><p className="text-[11px] font-bold tracking-[0.18em] text-caramel">NÄCHSTE RUNDE</p><h2 className="mt-2 text-xl font-semibold text-espresso">Was soll Crave noch berücksichtigen?</h2><p className="mt-1 text-sm text-bark">Deine Ergänzung wird mit allen bisherigen Wünschen weitergeführt.</p><div className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="z. B. aber bitte High Protein" className="min-w-0 flex-1 rounded-2xl border border-espresso/10 bg-white px-4 py-3 text-sm outline-none focus:border-caramel focus:ring-4 focus:ring-caramel/10" /><button type="button" onClick={submit} disabled={isLoading} className="rounded-2xl bg-espresso px-5 py-3 text-sm font-bold text-white transition hover:bg-caramel disabled:opacity-60">Neue 10 Ideen</button></div></div></>}</section>}</div></main>;
 }

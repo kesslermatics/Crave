@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { apiUrl } from "@/lib/api";
+import { RecipeChat } from "@/components/recipe-chat";
 
 type Ingredient = { name: string; amount: number; unit: string };
 type Recipe = {
@@ -74,7 +75,7 @@ export function SuggestionDetail() {
     }, []);
     if (isRestoring) return <main className="flex-1 bg-linen p-8 text-center text-bark">Vorschlag wird geladen…</main>;
     if (!recipe) return <main className="flex-1 bg-linen p-8 text-center"><p className="text-bark">Dieser Vorschlag ist nicht mehr verfügbar.</p><Link href="/" className="mt-4 inline-block font-bold text-caramel">Neue Ideen finden</Link></main>;
-    return <FullView recipe={recipe} proposal />;
+    return <><FullView recipe={recipe} proposal /><div className="mx-auto max-w-5xl px-5 pb-28 sm:px-8"><RecipeChat recipe={recipe} /></div></>;
 }
 
 export function StoredRecipeDetail({ recipeId }: { recipeId: string }) {
@@ -83,5 +84,5 @@ export function StoredRecipeDetail({ recipeId }: { recipeId: string }) {
     useEffect(() => { const token = sessionStorage.getItem("crave_access_token"); fetch(`${apiUrl}/recipes/${recipeId}`, { headers: { Authorization: `Bearer ${token}` } }).then(async (response) => { if (!response.ok) throw new Error("Das Rezept konnte nicht geladen werden."); return response.json(); }).then(setRecipe).catch((caught) => setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht geladen werden.")); }, [recipeId]);
     if (error) return <main className="flex-1 bg-linen p-8 text-center text-red-800">{error}</main>;
     if (!recipe) return <main className="flex-1 bg-linen p-8 text-center text-bark">Rezept wird geladen…</main>;
-    return <FullView recipe={recipe} proposal={false} />;
+    return <><FullView recipe={recipe} proposal={false} /><div className="mx-auto max-w-5xl px-5 pb-28 sm:px-8"><RecipeChat recipe={recipe} /></div></>;
 }

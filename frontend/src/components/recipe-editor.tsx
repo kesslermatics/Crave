@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { apiUrl } from "@/lib/api";
 
@@ -46,6 +46,8 @@ export function RecipeEditor({ initialType = "meal" }: { initialType?: string })
 	const type: RecipeType = initialType in categories ? initialType as RecipeType : "meal";
 	const { label, icon } = categories[type];
 	const router = useRouter();
+	const searchParams = useSearchParams();
+	const editId = searchParams.get("edit");
 	const formRef = useRef<HTMLFormElement>(null);
 	const [description, setDescription] = useState("");
 	const [imageData, setImageData] = useState("");
@@ -55,6 +57,10 @@ export function RecipeEditor({ initialType = "meal" }: { initialType?: string })
 	const [isImaging, setIsImaging] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const [error, setError] = useState("");
+
+	useEffect(() => {
+		if (editId) router.replace(`/recipes/${editId}/edit`);
+	}, [editId, router]);
 
 	function recipeIngredients() { return ingredients.filter((item) => item.name.trim()).map((item) => ({ name: item.name.trim(), amount: Number(item.amount || 0), unit: item.unit.trim() })); }
 	function recipeSteps() { return steps.map((step) => step.trim()).filter(Boolean); }

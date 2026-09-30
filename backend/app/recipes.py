@@ -149,3 +149,35 @@ async def get_recipe(
     if recipe is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="recipe not found")
     return serialise_recipe(recipe)
+
+
+@router.put("/{recipe_id}", response_model=RecipeRead)
+async def update_recipe(
+    recipe_id: UUID,
+    payload: RecipeCreate,
+    session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_user),
+) -> RecipeRead:
+    """Replace an existing recipe with a fully validated edited draft."""
+    recipe = await session.scalar(select(Recipe).options(selectinload(Recipe.tags)).where(Recipe.id == recipe_id))
+    if recipe is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rezept nicht gefunden")
+    recipe.title = payload.title
+    recipe.description = payload.description
+    recipe.recipe_type = payload.recipe_type
+    recipe.image_data = payload.image_data
+    recipe.servings = payload.servings
+    recipe.total_time_minutes = payload.total_time_minutes
+    recipe.difficulty = payload.difficulty
+    recipe.calories = payload.calories
+    recipe.protein_g = payload.protein_g
+    recipe.carbs_g = payload.carbs_g
+    recipe.fat_g = payload.fat_g
+    recipe.ingredients = [ingredient.model_dump(mode="json") for ingredient in payload.ingredients]
+    recipe.instructions = payload.instructions
+    recipe.details = payload.details
+    recipe.is_ai_generated = payload.is_ai_generated
+    recipe.tags = await resolve_tags(session, payload.tags)
+    await session.commit()
+    await session.refresh(recipe, attribute_names=["tags"])
+    return serialise_recipe(recipe)
