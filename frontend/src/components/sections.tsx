@@ -114,7 +114,7 @@ export function Cta() {
             <div className="rounded-[2rem] bg-espresso px-6 py-12 text-center text-white sm:px-12 sm:py-16">
                 <h2 className="mx-auto max-w-2xl text-3xl font-semibold leading-tight tracking-[-0.06em] sm:text-5xl">Hungry for something good?</h2>
                 <p className="mx-auto mt-4 max-w-md text-sm leading-6 text-white/70">Open your fridge, tell Crave how you feel, and dinner is sorted.</p>
-                <a href="#top" className="mt-8 inline-block rounded-full bg-saffron px-8 py-4 text-sm font-bold text-espresso transition hover:bg-white">Start cooking</a>
+                <a href="/signup" className="mt-8 inline-block rounded-full bg-saffron px-8 py-4 text-sm font-bold text-espresso transition hover:bg-white">Start cooking</a>
             </div>
         </section>
     );

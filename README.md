@@ -21,13 +21,20 @@ Create three services: Postgres, `backend` (root directory `backend`) and `front
 | `ENVIRONMENT` | `production` (disables `/docs` and the OpenAPI schema, enables HSTS) |
 | `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (reference variable) |
 | `GEMINI_API_KEY` | your key (keep it as a Railway secret) |
-| `CORS_ORIGINS` | the exact public frontend origin, e.g. `https://crave.up.railway.app` |
-| `ALLOWED_HOSTS` | the public backend hostname, e.g. `crave-api.up.railway.app` |
+| `JWT_SECRET` | a long, cryptographically random Railway secret used to sign access tokens |
+| `CORS_ORIGINS` | not needed in production; CORS is pinned to `https://crave-frontend-production.up.railway.app` in the API code |
+| `ALLOWED_HOSTS` | `crave-backend-production.up.railway.app` |
 
 **frontend variables**
 
 | Variable | Value |
 | --- | --- |
-| `NEXT_PUBLIC_API_URL` | the public backend URL (inlined at build time, contains no secrets) |
+| `NEXT_PUBLIC_API_URL` | `https://crave-backend-production.up.railway.app` (inlined at build time, contains no secrets) |
 
 Never commit `.env` files; only `.env.example` templates are tracked.
+
+## Account activation
+
+New signup accounts are stored with `is_active=false`; they cannot obtain an access token until manually enabled. There is intentionally no public admin endpoint. Run the following command in the backend Railway service to enable an account:
+
+`python -m app.admin activate-user person@example.com`

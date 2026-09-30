@@ -1,15 +1,33 @@
 """FastAPI entry point for the Crave culinary engine."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
+from app.auth import router as auth_router
 from app.config import get_settings
-from app.db import get_engine
+from app.db import get_engine, initialize_database
 
 settings = get_settings()
+PRODUCTION_FRONTEND_ORIGIN = "https://crave-frontend-production.up.railway.app"
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Prepare Postgres schema and release the connection pool on shutdown."""
+    if settings.database_url is None:
+        if settings.is_production:
+            raise RuntimeError("DATABASE_URL must be set in production")
+    else:
+        await initialize_database()
+    yield
+    if settings.database_url is not None:
+        await get_engine().dispose()
+
 
 app = FastAPI(
     title="Crave API",
@@ -19,16 +37,20 @@ app = FastAPI(
     docs_url=None if settings.is_production else "/docs",
     redoc_url=None,
     openapi_url=None if settings.is_production else "/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list,
+    # Production is deliberately pinned to Crave's Railway frontend. Local
+    # development keeps using CORS_ORIGINS from .env.
+    allow_origins=[PRODUCTION_FRONTEND_ORIGIN] if settings.is_production else settings.cors_origin_list,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.allowed_host_list)
+app.include_router(auth_router)
 
 
 @app.middleware("http")

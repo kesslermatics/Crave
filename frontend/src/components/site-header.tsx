@@ -26,7 +26,7 @@ export function SiteHeader() {
                         </a>
                     ))}
                 </nav>
-                <a href="#start" className="rounded-full bg-caramel px-4 py-2.5 text-xs font-bold text-white transition hover:bg-espresso sm:px-5 sm:text-sm">
+                <a href="/signup" className="rounded-full bg-caramel px-4 py-2.5 text-xs font-bold text-white transition hover:bg-espresso sm:px-5 sm:text-sm">
                     Start cooking
                 </a>
             </div>

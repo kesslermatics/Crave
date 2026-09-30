@@ -2,7 +2,7 @@
 
 from functools import lru_cache
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: SecretStr | None = Field(default=None, alias="DATABASE_URL")
     gemini_api_key: SecretStr | None = Field(default=None, alias="GEMINI_API_KEY")
+    jwt_secret: SecretStr | None = Field(default=None, alias="JWT_SECRET")
     # Comma-separated list of exact origins, e.g. https://crave.up.railway.app
     cors_origins: str = "http://localhost:3000"
     # Comma-separated list of accepted Host headers; "*" only for local development.
@@ -20,6 +21,12 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    @property
+    def jwt_secret_value(self) -> str:
+        if self.jwt_secret is None:
+            raise RuntimeError("JWT_SECRET is not set")
+        return self.jwt_secret.get_secret_value()
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -48,6 +55,12 @@ class Settings(BaseSettings):
         if "*" in value:
             raise ValueError("CORS_ORIGINS must list explicit origins, not '*'")
         return value
+
+    @model_validator(mode="after")
+    def _production_secrets_are_present(self):
+        if self.is_production and self.jwt_secret is None:
+            raise ValueError("JWT_SECRET must be set in production")
+        return self
 
 
 @lru_cache

@@ -10,7 +10,7 @@ export function Hero() {
                     Crave is an AI-powered culinary engine. Scan your fridge, hit your macros, or cook by mood — and get the perfect recipe in seconds.
                 </p>
                 <div id="start" className="mt-8 flex flex-col gap-3 sm:flex-row">
-                    <a href="#modes" className="rounded-full bg-caramel px-7 py-4 text-center text-sm font-bold text-white shadow-[0_12px_24px_rgba(153,97,48,0.2)] transition hover:bg-espresso">
+                    <a href="/signup" className="rounded-full bg-caramel px-7 py-4 text-center text-sm font-bold text-white shadow-[0_12px_24px_rgba(153,97,48,0.2)] transition hover:bg-espresso">
                         ✦ Scan my fridge
                     </a>
                     <a href="#modes" className="rounded-full bg-cream px-7 py-4 text-center text-sm font-bold transition hover:bg-saffron">
