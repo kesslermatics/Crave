@@ -14,6 +14,7 @@ from app.auth import get_current_user
 from app.config import get_settings
 from app.models import User
 from app.recipe_enums import RecipeType
+from app.recipe_schemas import RecipeCreate
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 DESCRIPTION_MODEL = "gpt-6-sol"
@@ -40,6 +41,14 @@ class DescriptionResponse(BaseModel):
 
 class ImageResponse(BaseModel):
     image_data: str
+
+
+class RecipeSuggestionRequest(BaseModel):
+    prompt: str = Field(min_length=8, max_length=1_500)
+
+
+class RecipeSuggestionsResponse(BaseModel):
+    recipes: list[RecipeCreate] = Field(min_length=5, max_length=5)
 
 
 def recipe_context(context: RecipeAiContext) -> str:
@@ -89,3 +98,21 @@ async def generate_image(context: RecipeAiContext, _: User = Depends(get_current
     except (ValueError, binascii.Error):
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="KI-Bild ist ungültig.") from None
     return ImageResponse(image_data=f"data:image/png;base64,{image_base64}")
+
+
+@router.post("/recipe-suggestions", response_model=RecipeSuggestionsResponse)
+async def generate_recipe_suggestions(
+    request: RecipeSuggestionRequest,
+    _: User = Depends(get_current_user),
+) -> RecipeSuggestionsResponse:
+    """Generate five complete, save-ready meal recipes from a culinary mood prompt."""
+    prompt = f"""Du bist der kulinarische Ideengeber für die deutsche Koch-App Crave.
+Erstelle exakt fünf unterschiedliche, realistische Rezeptvorschläge als valides JSON-Objekt mit genau dem Schlüssel "recipes". Jeder Eintrag muss alle Felder eines RecipeCreate-Objekts enthalten und sofort speicherbar sein. Verwende ausschließlich recipe_type "meal", difficulty "easy", "medium" oder "hard" sowie die passenden meal-details: cooking_method, required_equipment, prep_time_minutes, cook_time_minutes, meal_prep_friendly, fridge_life_days, freezable, spiciness_level, volume_index und served_temperature. Setze image_data auf null und is_ai_generated auf true.
+Die Beschreibungen müssen natürliches Deutsch sein, zwei kurze Sätze enthalten und ohne Marketingfloskeln auskommen. Zutaten brauchen name, amount und unit; die Zubereitung besteht aus klaren einzelnen Schritten. Verwende nur plausible Nährwerte und Zeitangaben. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
+Nutzerwunsch: {request.prompt}"""
+    try:
+        response = await client().responses.create(model=DESCRIPTION_MODEL, input=prompt)
+        return RecipeSuggestionsResponse.model_validate(json.loads(response.output_text))
+    except (OpenAIError, json.JSONDecodeError, ValueError):
+        logger.exception("OpenAI recipe suggestion generation failed")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Rezeptvorschläge sind momentan nicht verfügbar.") from None

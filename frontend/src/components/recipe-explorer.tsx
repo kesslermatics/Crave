@@ -108,10 +108,10 @@ export function RecipeExplorer() {
                 ) : (
                     <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                         {recipes.map((recipe, index) => (
-                            <article key={recipe.id} className="overflow-hidden rounded-3xl border border-espresso/8 bg-white shadow-[0_10px_25px_rgba(66,52,33,0.06)]">
+                            <Link key={recipe.id} href={`/recipes/${recipe.id}`} className="block overflow-hidden rounded-3xl border border-espresso/8 bg-white shadow-[0_10px_25px_rgba(66,52,33,0.06)] transition hover:-translate-y-1 hover:shadow-[0_16px_32px_rgba(66,52,33,0.12)]">
                                 <div className={`h-36 bg-gradient-to-br ${gradients[index % gradients.length]}`} style={recipe.image_data ? { backgroundImage: `url(${recipe.image_data})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined} />
                                 <div className="p-5"><h2 className="text-lg font-semibold tracking-[-0.04em] text-espresso">{recipe.title}</h2><p className="mt-1 line-clamp-2 text-xs leading-5 text-bark">{recipe.description}</p><p className="mt-4 text-xs font-bold text-caramel">{recipe.total_time_minutes} Min. · {recipe.calories} kcal · {recipe.protein_g} g Protein</p></div>
-                            </article>
+                            </Link>
                         ))}
                     </div>
                 )}

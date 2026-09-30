@@ -1,11 +1,12 @@
 import { AuthGate } from "@/components/auth-gate";
+import { HomeSuggestions } from "@/components/home-suggestions";
 import { MobileNav, SiteHeader } from "@/components/site-header";
 
 export default function Home() {
     return (
         <AuthGate>
             <SiteHeader />
-            <main className="min-h-[calc(100vh-4rem)] bg-white" />
+            <HomeSuggestions />
             <MobileNav />
         </AuthGate>
     );
