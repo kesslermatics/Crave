@@ -74,7 +74,7 @@ export function Recipes() {
             <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8 lg:py-24">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                     <Heading eyebrow="MADE FOR YOU" title="Today's best matches" />
-                    <a href="#start" className="text-sm font-bold text-caramel hover:text-espresso">See all recipes →</a>
+                    <span className="text-sm font-bold text-caramel">6 recipes</span>
                 </div>
                 <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                     {recipes.map((recipe) => (

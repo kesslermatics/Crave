@@ -15,6 +15,8 @@ from app.db import get_engine, initialize_database
 settings = get_settings()
 PRODUCTION_FRONTEND_ORIGIN = "https://crave-frontend-production.up.railway.app"
 PRODUCTION_BACKEND_HOST = "crave-backend-production.up.railway.app"
+cors_origins = list(dict.fromkeys([PRODUCTION_FRONTEND_ORIGIN, *settings.cors_origin_list]))
+trusted_hosts = list(dict.fromkeys([PRODUCTION_BACKEND_HOST, "healthcheck.railway.app", *settings.allowed_host_list]))
 
 
 @asynccontextmanager
@@ -43,9 +45,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    # Production is deliberately pinned to Crave's Railway frontend. Local
-    # development keeps using CORS_ORIGINS from .env.
-    allow_origins=[PRODUCTION_FRONTEND_ORIGIN] if settings.is_production else settings.cors_origin_list,
+    # The deployed Railway frontend is always accepted, even when Railway
+    # variables have not been configured. Local origins may be added in .env.
+    allow_origins=cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization"],
@@ -54,7 +56,7 @@ app.add_middleware(
     TrustedHostMiddleware,
     # Keep the deployed Railway domain reachable even when the environment
     # variable has not yet been entered in the Railway dashboard.
-    allowed_hosts=[PRODUCTION_BACKEND_HOST, "healthcheck.railway.app"] if settings.is_production else settings.allowed_host_list,
+    allowed_hosts=trusted_hosts,
 )
 app.include_router(auth_router)
 
