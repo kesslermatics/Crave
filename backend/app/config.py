@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = Field(default=None, alias="DATABASE_URL")
     gemini_api_key: SecretStr | None = Field(default=None, alias="GEMINI_API_KEY")
     openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
+    openai_image_model: str = Field(default="gpt-image-2.5-flare", alias="OPENAI_IMAGE_MODEL")
     jwt_secret: SecretStr | None = Field(default=None, alias="JWT_SECRET")
     # Comma-separated list of exact origins, e.g. https://crave.up.railway.app
     cors_origins: str = "http://localhost:3000"
