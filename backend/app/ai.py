@@ -4,7 +4,7 @@ import base64
 import binascii
 import json
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from openai import AsyncOpenAI, OpenAIError, RateLimitError
@@ -50,6 +50,48 @@ class RecipeSuggestionRequest(BaseModel):
 
 class RecipeSuggestionsResponse(BaseModel):
     recipes: list[RecipeCreate] = Field(min_length=10, max_length=10)
+
+
+class GeneratedIngredient(BaseModel):
+    name: str
+    amount: float
+    unit: str
+
+
+class GeneratedMealDetails(BaseModel):
+    cooking_method: str
+    required_equipment: list[str]
+    prep_time_minutes: int
+    cook_time_minutes: int
+    meal_prep_friendly: bool
+    fridge_life_days: int
+    freezable: bool
+    spiciness_level: int
+    volume_index: Literal["low", "medium", "high"]
+    served_temperature: Literal["hot", "warm", "cold"]
+
+
+class GeneratedRecipe(BaseModel):
+    title: str
+    description: str
+    recipe_type: Literal["meal"]
+    image_data: None
+    servings: int
+    total_time_minutes: int
+    difficulty: Literal["easy", "medium", "hard"]
+    calories: int
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    ingredients: list[GeneratedIngredient]
+    instructions: list[str]
+    details: GeneratedMealDetails
+    is_ai_generated: bool
+    tags: list[str]
+
+
+class GeneratedRecipeSuggestions(BaseModel):
+    recipes: list[GeneratedRecipe] = Field(min_length=10, max_length=10)
 
 
 class ChatMessage(BaseModel):
@@ -133,8 +175,16 @@ Berücksichtige alle vorherigen Wünsche als zusammenhängenden Verlauf. Der neu
 Bisherige Wünsche: {json.dumps(request.history, ensure_ascii=False)}
 Nutzerwunsch: {request.prompt}"""
     try:
-        response = await client().responses.create(model=DESCRIPTION_MODEL, input=prompt)
-        return RecipeSuggestionsResponse.model_validate(json.loads(response.output_text))
+        response = await client().responses.parse(
+            model=DESCRIPTION_MODEL,
+            input=prompt,
+            text_format=GeneratedRecipeSuggestions,
+            max_output_tokens=20_000,
+        )
+        if response.output_parsed is None:
+            raise ValueError("OpenAI did not return a structured recipe response")
+        recipes = [RecipeCreate.model_validate(recipe.model_dump()) for recipe in response.output_parsed.recipes]
+        return RecipeSuggestionsResponse(recipes=recipes)
     except (OpenAIError, json.JSONDecodeError, ValueError):
         logger.exception("OpenAI recipe suggestion generation failed")
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Rezeptvorschläge sind momentan nicht verfügbar.") from None

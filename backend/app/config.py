@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     def _production_secrets_are_present(self):
         if self.is_production and self.jwt_secret is None:
             raise ValueError("JWT_SECRET must be set in production")
+        if self.jwt_secret is not None and len(self.jwt_secret.get_secret_value().encode("utf-8")) < 32:
+            raise ValueError("JWT_SECRET must be at least 32 bytes long")
         return self
 
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { apiUrl } from "@/lib/api";
+import { LoadingIndicator } from "@/components/loading-indicator";
 
 const categories = [
     { type: "meal", label: "Mahlzeiten", icon: "🍲" },
@@ -73,7 +74,7 @@ export function RecipeExplorer() {
     return (
         <section className="min-h-[calc(100vh-4rem)] bg-linen pb-28">
             <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-12">
-                <div className="relative flex items-center justify-between gap-3">
+                <div className="sticky top-16 z-30 -mx-5 flex items-center justify-between gap-3 border-b border-espresso/10 bg-linen/95 px-5 py-3 backdrop-blur sm:-mx-8 sm:px-8">
                     <div>
                         <p className="text-[11px] font-bold tracking-[0.18em] text-caramel">DEIN KOCHBUCH</p>
                         <button onClick={() => setIsMenuOpen((open) => !open)} className="mt-2 flex items-center gap-2 text-left text-3xl font-semibold tracking-[-0.06em] text-espresso sm:text-4xl" aria-expanded={isMenuOpen} aria-haspopup="listbox">
@@ -98,7 +99,7 @@ export function RecipeExplorer() {
                     <input value={search} onChange={(event) => setSearch(event.target.value)} className="w-full rounded-2xl border border-espresso/10 bg-white py-4 pl-11 pr-4 text-sm font-medium outline-none transition placeholder:text-bark/50 focus:border-caramel focus:ring-4 focus:ring-saffron/30" placeholder={`${category.label}, Zutaten oder Tags suchen`} />
                 </label>
                 {error && <p role="alert" className="mt-8 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
-                {isLoading ? <p className="mt-12 text-center text-sm font-semibold text-bark">Rezepte werden gesucht…</p> : recipes.length === 0 ? (
+                {isLoading ? <p className="mt-12 flex justify-center text-center text-sm font-semibold text-bark"><LoadingIndicator label="Rezepte werden gesucht…" /></p> : recipes.length === 0 ? (
                     <div className="mt-12 rounded-3xl border border-dashed border-espresso/20 bg-white px-6 py-14 text-center">
                         <span className="text-3xl">{category.icon}</span>
                         <h2 className="mt-4 text-xl font-semibold tracking-[-0.04em] text-espresso">Noch keine {category.label}</h2>
