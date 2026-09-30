@@ -51,7 +51,7 @@ app.add_middleware(
     # variables have not been configured. Local origins may be added in .env.
     allow_origins=cors_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )
 app.add_middleware(
