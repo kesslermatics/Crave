@@ -11,6 +11,7 @@ from sqlalchemy import text
 from app.auth import router as auth_router
 from app.config import get_settings
 from app.db import get_engine, initialize_database
+from app.recipes import router as recipes_router
 
 settings = get_settings()
 PRODUCTION_FRONTEND_ORIGIN = "https://crave-frontend-production.up.railway.app"
@@ -59,6 +60,7 @@ app.add_middleware(
     allowed_hosts=trusted_hosts,
 )
 app.include_router(auth_router)
+app.include_router(recipes_router)
 
 
 @app.middleware("http")
