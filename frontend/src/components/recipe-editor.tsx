@@ -7,6 +7,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowLeft, CakeSlice, ChevronDown, CookingPot, Copy, CupSoda, ImagePlus, Plus, Soup, Sparkles, X } from "lucide-react";
 
 import { apiUrl } from "@/lib/api";
+import { recipeListHref } from "@/lib/recipe-filter";
 import { LoadingIndicator } from "@/components/loading-indicator";
 
 const categories = {
@@ -195,7 +196,7 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 			const response = await fetch(shouldOverwrite ? `${apiUrl}/recipes/${editId}` : `${apiUrl}/recipes`, { method: shouldOverwrite ? "PUT" : "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
 			const result: { id?: string; detail?: string } = await response.json().catch(() => ({}));
 			if (!response.ok) throw new Error(result.detail ?? "Das Rezept konnte nicht gespeichert werden.");
-			router.push(result.id ? `/recipes/${result.id}` : `/recipes?type=${type}`);
+			router.push(result.id ? `/recipes/${result.id}` : recipeListHref());
 		} catch (caught) { setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht gespeichert werden."); }
 		finally { saveAsDuplicateRef.current = false; setIsSaving(false); }
 	}
@@ -203,7 +204,7 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 	if (isLoadingRecipe) return <EditorSkeleton />;
 	return <main className="flex-1 bg-linen pb-28">
 		<form ref={formRef} onSubmit={submit} className="mx-auto max-w-4xl px-5 pt-5 motion-safe:animate-page-in sm:px-8 sm:pt-8">
-			<Link href={editId ? `/recipes/${editId}` : `/recipes?type=${type}`} className="-ml-3.5 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-bark transition hover:bg-espresso/[0.05] hover:text-espresso focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40"><ArrowLeft size={16} strokeWidth={2.25} aria-hidden="true" />{editId ? "Zum Rezept" : categories[type].label}</Link>
+			<Link href={editId ? `/recipes/${editId}` : recipeListHref()} className="-ml-3.5 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-bark transition hover:bg-espresso/[0.05] hover:text-espresso focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40"><ArrowLeft size={16} strokeWidth={2.25} aria-hidden="true" />{editId ? "Zum Rezept" : "Rezepte"}</Link>
 
 			<header className="mt-8 pb-10 sm:mt-12">
 				<p className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-[0.2em] text-caramel">{editId ? "BEARBEITEN" : "NEUES REZEPT"}<span className="h-1 w-1 rounded-full bg-caramel/40" aria-hidden="true" /><span className="inline-flex items-center gap-1">{icon}{label.toUpperCase()}</span></p>

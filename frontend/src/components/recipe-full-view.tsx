@@ -10,6 +10,7 @@ import { LoadingIndicator } from "@/components/loading-indicator";
 import { RecipeChat } from "@/components/recipe-chat";
 import { apiUrl } from "@/lib/api";
 import { formatDuration } from "@/lib/duration";
+import { recipeListHref } from "@/lib/recipe-filter";
 
 type Ingredient = { name: string; amount: number; unit: string };
 type Recipe = {
@@ -150,7 +151,7 @@ function FullView({ recipe, proposal, children }: { recipe: Recipe; proposal: bo
     return <main className="flex-1 bg-linen pb-32">
         <article className="mx-auto max-w-5xl px-5 pt-5 motion-safe:animate-page-in sm:px-8 sm:pt-8">
             <div className="-mx-3.5 flex items-center justify-between gap-3">
-                <Link href={proposal ? "/" : `/recipes?type=${recipe.recipe_type}`} className={pillGhost}><ArrowLeft size={16} strokeWidth={2.25} aria-hidden="true" />{proposal ? "Vorschläge" : "Rezepte"}</Link>
+                <Link href={proposal ? "/" : recipeListHref()} className={pillGhost}><ArrowLeft size={16} strokeWidth={2.25} aria-hidden="true" />{proposal ? "Vorschläge" : "Rezepte"}</Link>
                 {proposal ? saveButton("hidden sm:inline-flex") : <Link href={`/recipes/${recipe.id}/edit`} className={pillGhost}><Pencil size={15} strokeWidth={2.25} aria-hidden="true" />Bearbeiten</Link>}
             </div>
 
@@ -194,11 +195,11 @@ export function SuggestionDetail() {
     return <FullView recipe={recipe} proposal><RecipeChat recipe={recipe} /></FullView>;
 }
 
-function DeleteRecipeButton({ recipeId, recipeType }: { recipeId: string; recipeType?: string }) {
+function DeleteRecipeButton({ recipeId }: { recipeId: string }) {
     const router = useRouter();
     const [isDeleting, setIsDeleting] = useState(false);
     const [error, setError] = useState("");
-    async function remove() { if (!window.confirm("Dieses Rezept wirklich dauerhaft löschen?")) return; setError(""); setIsDeleting(true); try { const token = sessionStorage.getItem("crave_access_token"); const response = await fetch(`${apiUrl}/recipes/${recipeId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) { const result: { detail?: string } = await response.json().catch(() => ({})); throw new Error(result.detail ?? "Das Rezept konnte nicht gelöscht werden."); } router.replace(recipeType ? `/recipes?type=${recipeType}` : "/recipes"); } catch (caught) { setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht gelöscht werden."); } finally { setIsDeleting(false); } }
+    async function remove() { if (!window.confirm("Dieses Rezept wirklich dauerhaft löschen?")) return; setError(""); setIsDeleting(true); try { const token = sessionStorage.getItem("crave_access_token"); const response = await fetch(`${apiUrl}/recipes/${recipeId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) { const result: { detail?: string } = await response.json().catch(() => ({})); throw new Error(result.detail ?? "Das Rezept konnte nicht gelöscht werden."); } router.replace(recipeListHref()); } catch (caught) { setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht gelöscht werden."); } finally { setIsDeleting(false); } }
     return <div className="mt-16 flex flex-col items-center gap-2">
         <button onClick={remove} disabled={isDeleting} className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-bark/70 transition hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 disabled:opacity-60">
             <Trash2 size={15} strokeWidth={2} aria-hidden="true" />{isDeleting ? "Wird gelöscht…" : "Rezept löschen"}
@@ -213,5 +214,5 @@ export function StoredRecipeDetail({ recipeId }: { recipeId: string }) {
     useEffect(() => { const token = sessionStorage.getItem("crave_access_token"); fetch(`${apiUrl}/recipes/${recipeId}`, { headers: { Authorization: `Bearer ${token}` } }).then(async (response) => { if (!response.ok) throw new Error("Das Rezept konnte nicht geladen werden."); return response.json(); }).then(setRecipe).catch((caught) => setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht geladen werden.")); }, [recipeId]);
     if (error) return <Notice action={<Link href="/recipes" className="mt-4 inline-block text-sm font-semibold text-caramel hover:text-espresso">Zu deinen Rezepten</Link>}><span className="text-red-800">{error}</span></Notice>;
     if (!recipe) return <RecipeSkeleton />;
-    return <FullView recipe={recipe} proposal={false}><RecipeChat recipe={recipe} /><DeleteRecipeButton recipeId={recipeId} recipeType={recipe.recipe_type} /></FullView>;
+    return <FullView recipe={recipe} proposal={false}><RecipeChat recipe={recipe} /><DeleteRecipeButton recipeId={recipeId} /></FullView>;
 }

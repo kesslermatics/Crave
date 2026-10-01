@@ -6,7 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -116,12 +116,11 @@ async def list_recipes(
     min_protein_g: Annotated[float | None, Query(ge=0, le=10_000)] = None,
     tag: str | None = Query(default=None, min_length=1, max_length=80),
     search: str | None = Query(default=None, min_length=1, max_length=100),
-    limit: Annotated[int, Query(ge=1, le=100)] = 24,
     session: AsyncSession = Depends(get_session),
     _: User = Depends(get_current_user),
 ) -> list[RecipeSummary]:
-    """List recipes using indexed time, macro, type, and tag filters."""
-    statement = select(Recipe).options(selectinload(Recipe.tags)).order_by(Recipe.created_at.desc())
+    """List all matching recipes, alphabetically by title, using type, time, macro, and tag filters."""
+    statement = select(Recipe).options(selectinload(Recipe.tags)).order_by(func.lower(Recipe.title), Recipe.created_at.desc())
     if recipe_type is not None:
         statement = statement.where(Recipe.recipe_type == recipe_type)
     if max_time_minutes is not None:
@@ -134,7 +133,6 @@ async def list_recipes(
     recipes = (await session.scalars(statement)).unique().all()
     if search is not None:
         recipes = [recipe for recipe in recipes if fuzzy_matches(recipe, search)]
-    recipes = recipes[:limit]
     return [RecipeSummary(**serialise_recipe(recipe).model_dump()) for recipe in recipes]
 
 
