@@ -211,7 +211,14 @@ def page_to_source_text(url: str, html: str) -> ScrapedPage:
     page_text = "\n".join(lines)
 
     if recipe is None and len(page_text) < 200:
-        raise ScrapeError("Auf der Seite wurde kein Rezept gefunden. Kopiere den Rezepttext stattdessen hinein.")
+        title = (parser.meta.get("og:title") or parser.title or "").strip()
+        title_hint = f" ({title})" if title else ""
+        raise ScrapeError(
+            f"Die Seite{title_hint} lädt Rezeptdaten erst nach dem Öffnen im Browser – "
+            "der Link kann daher nicht direkt übernommen werden. "
+            "Öffne das Rezept in der App, kopiere den gesamten Text (Zutaten, Mengen und Schritte) "
+            "und füge ihn in das Textfeld ein."
+        )
 
     sections = [f"Quelle: {url}"]
     title = parser.meta.get("og:title") or parser.title.strip()
