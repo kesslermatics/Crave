@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.recipe_enums import (
     Appliance,
@@ -18,6 +18,63 @@ from app.recipe_enums import (
     StorageMethod,
     VolumeIndex,
 )
+
+
+VOLUME_INDEX_CANONICAL: dict[str, VolumeIndex] = {
+    "low": VolumeIndex.LOW, "gering": VolumeIndex.LOW,
+    "medium": VolumeIndex.MEDIUM, "mittel": VolumeIndex.MEDIUM,
+    "high": VolumeIndex.HIGH, "hoch": VolumeIndex.HIGH,
+}
+
+MEAL_TEMPERATURE_CANONICAL: dict[str, ServingTemperature] = {
+    "hot": ServingTemperature.HOT, "heiss": ServingTemperature.HOT, "heiß": ServingTemperature.HOT,
+    "warm": ServingTemperature.WARM,
+    "cold": ServingTemperature.COLD, "kalt": ServingTemperature.COLD,
+    "eiskalt": ServingTemperature.COLD, "iced": ServingTemperature.COLD,
+    "gekuehlt": ServingTemperature.COLD, "gekühlt": ServingTemperature.COLD, "chilled": ServingTemperature.COLD,
+    "zimmertemperatur": ServingTemperature.COLD, "room_temperature": ServingTemperature.COLD,
+}
+
+OVEN_MODE_CANONICAL: dict[str, OvenMode] = {
+    "conventional": OvenMode.CONVENTIONAL, "ober_unterhitze": OvenMode.CONVENTIONAL,
+    "fan": OvenMode.FAN, "umluft": OvenMode.FAN,
+    "hot_air": OvenMode.HOT_AIR, "heissluft": OvenMode.HOT_AIR, "heißluft": OvenMode.HOT_AIR,
+}
+
+DRINK_PREP_METHOD_CANONICAL: dict[str, DrinkPreparationMethod] = {
+    "blended": DrinkPreparationMethod.BLENDED, "pueriert": DrinkPreparationMethod.BLENDED, "püriert": DrinkPreparationMethod.BLENDED,
+    "shaken": DrinkPreparationMethod.SHAKEN, "geschuettelt": DrinkPreparationMethod.SHAKEN, "geschüttelt": DrinkPreparationMethod.SHAKEN,
+    "stirred": DrinkPreparationMethod.STIRRED, "geruehrt": DrinkPreparationMethod.STIRRED, "gerührt": DrinkPreparationMethod.STIRRED,
+    "brewed": DrinkPreparationMethod.BREWED, "gebrueht": DrinkPreparationMethod.BREWED, "gebrüht": DrinkPreparationMethod.BREWED,
+    "steeped": DrinkPreparationMethod.STEEPED, "gezogen": DrinkPreparationMethod.STEEPED,
+    "built_in_glass": DrinkPreparationMethod.BUILT_IN_GLASS, "im_glas": DrinkPreparationMethod.BUILT_IN_GLASS,
+}
+
+DRINK_TEMPERATURE_CANONICAL: dict[str, ServingTemperature] = {
+    "hot": ServingTemperature.HOT, "heiss": ServingTemperature.HOT, "heiß": ServingTemperature.HOT, "warm": ServingTemperature.HOT,
+    "iced": ServingTemperature.ICED, "eiskalt": ServingTemperature.ICED,
+    "chilled": ServingTemperature.CHILLED, "gekuehlt": ServingTemperature.CHILLED, "gekühlt": ServingTemperature.CHILLED,
+    "cold": ServingTemperature.CHILLED, "kalt": ServingTemperature.CHILLED,
+    "room_temperature": ServingTemperature.ROOM_TEMPERATURE, "zimmertemperatur": ServingTemperature.ROOM_TEMPERATURE,
+}
+
+ICE_TYPE_CANONICAL: dict[str, IceType] = {
+    "none": IceType.NONE, "ohne": IceType.NONE, "kein": IceType.NONE,
+    "cubes": IceType.CUBES, "wuerfel": IceType.CUBES, "würfel": IceType.CUBES, "eiswürfel": IceType.CUBES, "eiswuerfel": IceType.CUBES, "cube": IceType.CUBES,
+    "crushed": IceType.CRUSHED, "crushed_ice": IceType.CRUSHED,
+}
+
+CAFFEINE_LEVEL_CANONICAL: dict[str, CaffeineLevel] = {
+    "none": CaffeineLevel.NONE, "ohne": CaffeineLevel.NONE, "kein": CaffeineLevel.NONE,
+    "low": CaffeineLevel.LOW, "wenig": CaffeineLevel.LOW, "gering": CaffeineLevel.LOW,
+    "high": CaffeineLevel.HIGH, "viel": CaffeineLevel.HIGH, "hoch": CaffeineLevel.HIGH, "stark": CaffeineLevel.HIGH,
+}
+
+STORAGE_METHOD_CANONICAL: dict[str, StorageMethod] = {
+    "fridge": StorageMethod.FRIDGE, "kuehlschrank": StorageMethod.FRIDGE, "kühlschrank": StorageMethod.FRIDGE,
+    "pantry": StorageMethod.PANTRY, "vorratsschrank": StorageMethod.PANTRY,
+    "freezer": StorageMethod.FREEZER, "tiefkuehler": StorageMethod.FREEZER, "tiefkühler": StorageMethod.FREEZER,
+}
 
 
 class Ingredient(BaseModel):
@@ -38,6 +95,16 @@ class MealDetails(BaseModel):
     volume_index: VolumeIndex = VolumeIndex.MEDIUM
     served_temperature: ServingTemperature = ServingTemperature.HOT
 
+    @field_validator("volume_index", mode="before")
+    @classmethod
+    def canonicalize_volume_index(cls, value: Any) -> Any:
+        return VOLUME_INDEX_CANONICAL.get(str(value).strip().lower(), value)
+
+    @field_validator("served_temperature", mode="before")
+    @classmethod
+    def canonicalize_served_temperature(cls, value: Any) -> Any:
+        return MEAL_TEMPERATURE_CANONICAL.get(str(value).strip().lower(), value)
+
 
 class BakingDetails(BaseModel):
     oven_temperature_c: int = Field(ge=0, le=350)
@@ -50,6 +117,11 @@ class BakingDetails(BaseModel):
     dough_type: str = Field(min_length=1, max_length=80)
     special_techniques: list[str] = Field(default_factory=list, max_length=20)
 
+    @field_validator("oven_mode", mode="before")
+    @classmethod
+    def canonicalize_oven_mode(cls, value: Any) -> Any:
+        return OVEN_MODE_CANONICAL.get(str(value).strip().lower(), value)
+
 
 class DrinkDetails(BaseModel):
     prep_method: DrinkPreparationMethod
@@ -60,6 +132,33 @@ class DrinkDetails(BaseModel):
     caffeine_level: CaffeineLevel = CaffeineLevel.NONE
     glass_type: str = Field(min_length=1, max_length=80)
     volume_ml: int = Field(gt=0, le=10_000)
+
+    @field_validator("prep_method", mode="before")
+    @classmethod
+    def canonicalize_prep_method(cls, value: Any) -> Any:
+        return DRINK_PREP_METHOD_CANONICAL.get(str(value).strip().lower(), value)
+
+    @field_validator("served_temperature", mode="before")
+    @classmethod
+    def canonicalize_served_temperature(cls, value: Any) -> Any:
+        return DRINK_TEMPERATURE_CANONICAL.get(str(value).strip().lower(), value)
+
+    @field_validator("ice_type", mode="before")
+    @classmethod
+    def canonicalize_ice_type(cls, value: Any) -> Any:
+        return ICE_TYPE_CANONICAL.get(str(value).strip().lower(), value)
+
+    @field_validator("caffeine_level", mode="before")
+    @classmethod
+    def canonicalize_caffeine_level(cls, value: Any) -> Any:
+        return CAFFEINE_LEVEL_CANONICAL.get(str(value).strip().lower(), value)
+
+    @model_validator(mode="after")
+    def refine_drink_details(self) -> "DrinkDetails":
+        # If drink has ice cubes or crushed ice, it is served iced
+        if self.ice_type in (IceType.CUBES, IceType.CRUSHED) and self.served_temperature in (ServingTemperature.CHILLED, ServingTemperature.ROOM_TEMPERATURE):
+            self.served_temperature = ServingTemperature.ICED
+        return self
 
 
 class BasicDetails(BaseModel):
@@ -74,12 +173,22 @@ class BasicDetails(BaseModel):
     pairs_well_with: list[str] = Field(default_factory=list, max_length=50)
     resting_time_minutes: int = Field(default=0, ge=0, le=10_080)
 
+    @field_validator("storage_method", mode="before")
+    @classmethod
+    def canonicalize_storage_method(cls, value: Any) -> Any:
+        return STORAGE_METHOD_CANONICAL.get(str(value).strip().lower(), value)
+
 
 class PreservingDetails(BaseModel):
     preservation_method: str = Field(min_length=1, max_length=80)
     storage_method: StorageMethod
     shelf_life_days: int = Field(ge=1, le=3_650)
     processing_time_minutes: int = Field(ge=0, le=10_080)
+
+    @field_validator("storage_method", mode="before")
+    @classmethod
+    def canonicalize_storage_method(cls, value: Any) -> Any:
+        return STORAGE_METHOD_CANONICAL.get(str(value).strip().lower(), value)
 
 
 DETAIL_MODELS = {

@@ -52,7 +52,7 @@ function RecipeCard({ recipe, index, showCategory }: { recipe: Recipe; index: nu
             <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-espresso shadow-sm backdrop-blur">
                 <Clock3 size={12} strokeWidth={2.5} aria-hidden="true" />{formatDuration(recipe.total_time_minutes)}
             </span>
-            <ApplianceBadge appliance={recipe.appliance} size="sm" className="absolute top-2.5 right-2.5" />
+            <ApplianceBadge appliance={recipe.appliance} size="sm" className="absolute bottom-2.5 left-2.5" />
         </div>
         {showCategory && <p className="mt-3 inline-flex items-center gap-1 text-[11px] font-medium text-caramel"><Icon size={12} strokeWidth={2.25} aria-hidden="true" />{category.single}</p>}
         <h2 className={`${showCategory ? "mt-1" : "mt-3"} line-clamp-2 text-[15px] leading-snug font-semibold tracking-[-0.02em] text-espresso transition group-hover:text-caramel`}>{recipe.title}</h2>

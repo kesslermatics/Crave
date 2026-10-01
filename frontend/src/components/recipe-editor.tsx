@@ -28,9 +28,12 @@ const ghostAdd = "mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-2 t
 const removeButton = "grid h-[2.625rem] w-9 shrink-0 place-items-center rounded-xl text-bark/45 transition hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300";
 const darkButton = "inline-flex items-center justify-center gap-2 rounded-full bg-espresso px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-caramel focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40 disabled:opacity-60";
 
-const split = (entry: FormDataEntryValue | null) => String(entry ?? "").split(",").map((item) => item.trim()).filter(Boolean);
-const number = (form: FormData, name: string) => Number(form.get(name) || 0);
+// Normalisiert Komma zu Punkt – "0,25" und "0.25" sind gleich behandelt.
+/** Liest eine Zahl aus einem FormData-Feld; normalisiert deutsches Komma zu Punkt. */
+const number = (form: FormData, name: string) => { const raw = String(form.get(name) ?? "").trim().replace(",", "."); return Number(raw) || 0; };
 const value = (form: FormData, name: string) => String(form.get(name) ?? "").trim();
+const parseAmount = (raw: string) => { const n = Number(raw.trim().replace(",", ".")); return Number.isFinite(n) ? n : 0; };
+const split = (entry: FormDataEntryValue | null) => String(entry ?? "").split(/[,;]/).map((item) => item.trim()).filter(Boolean);
 
 const enumLabels: Record<string, string> = {
 	easy: "Einfach", medium: "Mittel", hard: "Schwer", low: "Gering", high: "Hoch",
@@ -41,7 +44,9 @@ const enumLabels: Record<string, string> = {
 };
 
 function Field({ name, label, type = "text", required = false, defaultValue, step, placeholder, suffix }: { name: string; label: string; type?: string; required?: boolean; defaultValue?: string | number; step?: string; placeholder?: string; suffix?: string }) {
-	const input = <input name={name} type={type} required={required} defaultValue={defaultValue} min={type === "number" ? 0 : undefined} step={step} placeholder={placeholder} inputMode={type === "number" ? "decimal" : undefined} className={suffix ? `${fieldBase} pr-14 tabular-nums` : inputClass} />;
+	// Numeric fields use text+inputMode so users can type "0,25" or "0.25" freely.
+	const isNum = type === "number";
+	const input = <input name={name} type={isNum ? "text" : type} inputMode={isNum ? "decimal" : undefined} required={required} defaultValue={defaultValue} placeholder={placeholder} className={suffix ? `${fieldBase} pr-14 tabular-nums` : isNum ? `${inputClass} tabular-nums` : inputClass} />;
 	return <label className={labelClass}>{label}{suffix ? <span className="relative mt-1.5 block">{input}<span className="pointer-events-none absolute inset-y-0 right-3.5 flex items-center text-sm text-bark/55">{suffix}</span></span> : input}</label>;
 }
 
@@ -131,14 +136,53 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 			Object.entries(prefillValues).forEach(([name, fieldValue]) => {
 				const field = formRef.current?.elements.namedItem(name) as HTMLInputElement | HTMLSelectElement | null;
 				if (!field) return;
-				if (field instanceof HTMLInputElement && field.type === "checkbox") field.checked = Boolean(fieldValue);
-				else field.value = Array.isArray(fieldValue) ? fieldValue.join(", ") : String(fieldValue ?? "");
+				if (field instanceof HTMLInputElement && field.type === "checkbox") {
+					field.checked = Boolean(fieldValue);
+				} else if (field instanceof HTMLSelectElement) {
+					const val = String(fieldValue ?? "");
+					field.value = val;
+					if (!field.value && val) {
+						const fallbackMap: Record<string, string> = {
+							cold: "chilled",
+							kalt: "chilled",
+							gekuehlt: "chilled",
+							gekühlt: "chilled",
+							eiskalt: "iced",
+							wuerfel: "cubes",
+							würfel: "cubes",
+							ohne: "none",
+							kein: "none",
+							viel: "high",
+							hoch: "high",
+							stark: "high",
+							wenig: "low",
+							gering: "low",
+							heiss: "hot",
+							heiß: "hot",
+							zimmertemperatur: "room_temperature",
+							ober_unterhitze: "conventional",
+							umluft: "fan",
+							heissluft: "hot_air",
+							heißluft: "hot_air",
+							mittel: "medium",
+							kuehlschrank: "fridge",
+							kühlschrank: "fridge",
+							vorratsschrank: "pantry",
+							tiefkuehler: "freezer",
+							tiefkühler: "freezer",
+						};
+						const fallback = fallbackMap[val.toLowerCase()];
+						if (fallback) field.value = fallback;
+					}
+				} else {
+					field.value = Array.isArray(fieldValue) ? fieldValue.join(", ") : String(fieldValue ?? "");
+				}
 			});
 		}, 0);
 		return () => window.clearTimeout(applyPrefill);
 	}, [isLoadingRecipe, prefillValues, type]);
 
-	function recipeIngredients() { return ingredients.filter((item) => item.name.trim()).map((item) => ({ name: item.name.trim(), amount: Number(item.amount || 0), unit: item.unit.trim() })); }
+	function recipeIngredients() { return ingredients.filter((item) => item.name.trim()).map((item) => ({ name: item.name.trim(), amount: parseAmount(item.amount), unit: item.unit.trim() })); }
 	async function importRecipe() {
 		if (!importUrl && importText.trim().length < 20) { setError("Füge bitte einen vollständigen Rezepttext oder einen Link ein."); return; }
 		setError(""); setIsImporting(true);
@@ -199,7 +243,7 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 		if (!recipeIngredients().length || !recipeSteps().length) { setError("Bitte füge mindestens eine Zutat und einen Zubereitungsschritt hinzu."); return; }
 		setError(""); setIsSaving(true);
 		const form = new FormData(event.currentTarget);
-		const payload = { ...buildContext(), description, image_data: imageData || null, servings: number(form, "servings"), difficulty: value(form, "difficulty"), is_ai_generated: form.get("is_ai_generated") === "on", appliance: value(form, "appliance") || "none" };
+		const payload = { ...buildContext(), description, image_data: imageData || null, servings: number(form, "servings"), difficulty: value(form, "difficulty"), is_ai_generated: Boolean(prefillValues?.is_ai_generated), appliance: value(form, "appliance") || "none" };
 		try {
 			const token = sessionStorage.getItem("crave_access_token");
 			const shouldOverwrite = Boolean(editId) && !saveAsDuplicateRef.current;
@@ -258,7 +302,6 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 					<Field name="servings" label="Portionen" type="number" required defaultValue={2} />
 					<Field name="total_time_minutes" label="Gesamtzeit" type="number" required defaultValue={20} suffix="Min" />
 					<Select name="appliance" label="Küchenmaschine" defaultValue="none" values={["none", "thermomix", "monsieur_cuisine"]} labels={{ none: "Keine – klassisch gekocht", thermomix: "Thermomix", monsieur_cuisine: "Monsieur Cuisine" }} />
-					<Check name="is_ai_generated" label="KI-generiert" />
 				</div>
 			</Section>
 
@@ -266,7 +309,7 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 				<div className="mb-1.5 hidden grid-cols-[minmax(0,1fr)_6rem_6rem_2.25rem] gap-2 px-1 text-xs font-medium text-bark/70 sm:grid" aria-hidden="true"><span>Zutat</span><span>Menge</span><span>Einheit</span></div>
 				<ul className="space-y-2">{ingredients.map((ingredient, index) => <li key={index} className="grid grid-cols-[minmax(0,1fr)_4.5rem_4.5rem_2.25rem] items-start gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_6rem_2.25rem]">
 					<textarea value={ingredient.name} onChange={(event) => updateIngredient(index, "name", event.target.value)} required placeholder="Zutat" rows={1} aria-label={`Zutat ${index + 1}`} className={`${fieldBase} min-h-[2.625rem] resize-none`} />
-					<input value={ingredient.amount} onChange={(event) => updateIngredient(index, "amount", event.target.value)} required type="number" min="0" step="0.1" inputMode="decimal" placeholder="Menge" aria-label={`Menge für Zutat ${index + 1}`} className={`${fieldBase} px-3 tabular-nums`} />
+					<input value={ingredient.amount} onChange={(event) => updateIngredient(index, "amount", event.target.value)} required type="text" inputMode="decimal" placeholder="Menge" aria-label={`Menge für Zutat ${index + 1}`} className={`${fieldBase} px-3 tabular-nums`} />
 					<input value={ingredient.unit} onChange={(event) => updateIngredient(index, "unit", event.target.value)} required placeholder="Einheit" aria-label={`Einheit für Zutat ${index + 1}`} className={`${fieldBase} px-3`} />
 					<button type="button" onClick={() => removeIngredient(index)} className={removeButton} aria-label={`Zutat ${index + 1} entfernen`}><X size={16} strokeWidth={2.25} aria-hidden="true" /></button>
 				</li>)}</ul>

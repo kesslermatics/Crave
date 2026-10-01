@@ -250,7 +250,7 @@ class RecipeImportResponse(BaseModel):
 IMPORT_DETAIL_DEFAULTS: dict[str, dict[str, Any]] = {
     "meal": {"cooking_method": "Kochen", "required_equipment": [], "prep_time_minutes": 10, "cook_time_minutes": 20, "meal_prep_friendly": False, "fridge_life_days": 2, "freezable": False, "spiciness_level": 1, "volume_index": "medium", "served_temperature": "hot"},
     "baking": {"oven_temperature_c": 180, "oven_mode": "conventional", "preheat_required": True, "pan_type": "Backform", "pan_size_cm": 20, "resting_time_minutes": 0, "cooling_time_minutes": 15, "dough_type": "Rührteig", "special_techniques": []},
-    "drink": {"prep_method": "stirred", "required_equipment": [], "served_temperature": "cold", "ice_type": "none", "abv_percent": 0, "caffeine_level": "none", "glass_type": "Glas", "volume_ml": 250},
+    "drink": {"prep_method": "stirred", "required_equipment": [], "served_temperature": "chilled", "ice_type": "none", "abv_percent": 0, "caffeine_level": "none", "glass_type": "Glas", "volume_ml": 250},
     "basic": {"yield_amount": 1, "yield_unit": "Portion", "serving_size_amount": 1, "serving_size_unit": "Portion", "storage_method": "fridge", "shelf_life_days": 2, "storage_tips": [], "component_type": "Grundrezept", "pairs_well_with": [], "resting_time_minutes": 0},
 }
 
@@ -262,6 +262,34 @@ RECIPE_TYPE_ALIASES: dict[str, str] = {
     "mahlzeit": "meal", "mahlzeiten": "meal", "meals": "meal",
 }
 
+DETAIL_KEY_ALIASES: dict[str, str] = {
+    "eis": "ice_type",
+    "eistyp": "ice_type",
+    "eis_typ": "ice_type",
+    "koffein": "caffeine_level",
+    "koffeingehalt": "caffeine_level",
+    "koffein_level": "caffeine_level",
+    "serviertemperatur": "served_temperature",
+    "temperatur": "served_temperature",
+    "zubereitung": "prep_method",
+    "zubereitungsart": "prep_method",
+    "glas": "glass_type",
+    "glasart": "glass_type",
+    "alkohol": "abv_percent",
+    "alkoholgehalt": "abv_percent",
+    "kochmethode": "cooking_method",
+    "vorbereitung": "prep_time_minutes",
+    "vorbereitungszeit": "prep_time_minutes",
+    "kochzeit": "cook_time_minutes",
+    "ofenmodus": "oven_mode",
+    "ofentemperatur": "oven_temperature_c",
+    "form": "pan_type",
+    "formgroesse": "pan_size_cm",
+    "formgröße": "pan_size_cm",
+    "teig": "dough_type",
+    "haltbarkeit": "fridge_life_days",
+}
+
 # Shared guidance so suggestions and imports classify recipes the same way.
 RECIPE_TYPE_GUIDANCE = (
     'Wähle recipe_type passend: "baking" für Kuchen, Torten, Brownies, Kekse, Brot, Brötchen, Muffins und Gebäck '
@@ -270,6 +298,26 @@ RECIPE_TYPE_GUIDANCE = (
     '"drink" für Kaffee, Tee, Smoothies, Shakes, Cocktails und andere Getränke; '
     '"basic" für Saucen, Dips, Dressings, Fonds, Teige, Würzmischungen und andere Grundrezepte; '
     '"meal" nur für herzhafte Gerichte.'
+)
+
+RECIPE_DETAILS_GUIDANCE = (
+    'Das Objekt "details" MUSS für den gewählten recipe_type genau die folgenden Felder und Wertebereiche enthalten:\n'
+    '- Für "meal": cooking_method (z. B. "Kochen", "Braten"), required_equipment (Liste von Strings), '
+    'prep_time_minutes (int), cook_time_minutes (int), meal_prep_friendly (bool), fridge_life_days (int), '
+    'freezable (bool), spiciness_level (int 1-5), volume_index ("low", "medium", "high"), '
+    'served_temperature ("hot", "warm", "cold").\n'
+    '- Für "baking": oven_temperature_c (int, 0 wenn ohne Backofen), oven_mode ("conventional", "fan", "hot_air"), '
+    'preheat_required (bool), pan_type (String), pan_size_cm (float), resting_time_minutes (int), '
+    'cooling_time_minutes (int), dough_type (String), special_techniques (Liste von Strings).\n'
+    '- Für "drink": prep_method ("blended", "shaken", "stirred", "brewed", "steeped", "built_in_glass"), '
+    'required_equipment (Liste von Strings), '
+    'served_temperature ("hot", "iced", "chilled", "room_temperature"; setze "iced" bei Eis/Eiswürfeln, "hot" bei Heißgetränken, "chilled" bei kalten Drinks ohne Eis), '
+    'ice_type ("none", "cubes", "crushed"; wenn Eiswürfel oder Eis im Rezept vorkommen, setze "cubes" oder "crushed", sonst "none"), '
+    'caffeine_level ("none", "low", "high"; setze "high" bei Kaffee, Espresso, Cold Brew oder starkem Tee, "low" bei leichtem Tee, "none" bei koffeinfreien Getränken), '
+    'abv_percent (float, 0 bei alkoholfrei), glass_type (String, z. B. "Glas", "Highball-Glas", "Kaffeeglas"), volume_ml (int, z. B. 250, 300).\n'
+    '- Für "basic": yield_amount (float), yield_unit (String), serving_size_amount (float), serving_size_unit (String), '
+    'storage_method ("fridge", "pantry", "freezer"), shelf_life_days (int), storage_tips (Liste von Strings), '
+    'component_type (String), pairs_well_with (Liste von Strings), resting_time_minutes (int).'
 )
 
 
@@ -302,16 +350,62 @@ def resolve_recipe_type(raw: Any, preferred: str | None = None) -> str:
 
 
 def normalise_imported_recipe(payload: dict[str, Any], preferred_type: str | None = None, forced_appliance: str | None = None) -> RecipeImportResponse:
-    """Accept both nested and flattened detail fields returned by recipe imports."""
+    """Accept both nested and flattened detail fields returned by recipe imports, resolving aliases and smart defaults."""
     recipe = dict(payload.get("recipe", {}))
     recipe["appliance"] = resolve_appliance(recipe.get("appliance"), forced_appliance)
     recipe_type = resolve_recipe_type(recipe.get("recipe_type"), preferred_type)
     defaults = IMPORT_DETAIL_DEFAULTS[recipe_type]
+
+    raw_details = dict(recipe.get("details") or {})
+    # Map German/alternative detail keys to canonical English keys
+    for k, v in list(raw_details.items()):
+        alias = DETAIL_KEY_ALIASES.get(k.lower())
+        if alias and alias not in raw_details:
+            raw_details[alias] = v
+    for k, v in list(recipe.items()):
+        alias = DETAIL_KEY_ALIASES.get(k.lower())
+        if alias and alias not in raw_details:
+            raw_details[alias] = v
+
     details = dict(defaults)
-    details.update(recipe.get("details") or {})
+    details.update(raw_details)
     for key in defaults:
         if key in recipe:
             details[key] = recipe.pop(key)
+
+    # Domain-aware refinement for drinks based on title, description, ingredients, instructions
+    if recipe_type == "drink":
+        ingredients = recipe.get("ingredients") or []
+        ing_text = " ".join([i.get("name", "") if isinstance(i, dict) else str(i) for i in ingredients])
+        instructions = recipe.get("instructions") or []
+        steps_text = " ".join([str(s) for s in instructions])
+        context_text = f"{recipe.get('title', '')} {recipe.get('description', '')} {ing_text} {steps_text}".lower()
+
+        has_cubes = any(w in context_text for w in ("eiswürfel", "eiswürfeln", "ice cubes", "ice cube", "eis-würfel"))
+        has_crushed = any(w in context_text for w in ("crushed ice", "crushed-ice", "crushedice", "gestoßenes eis"))
+        current_ice = str(details.get("ice_type", "")).lower()
+        if current_ice in ("", "none", "ohne", "kein"):
+            if has_crushed:
+                details["ice_type"] = "crushed"
+            elif has_cubes:
+                details["ice_type"] = "cubes"
+
+        current_caff = str(details.get("caffeine_level", "")).lower()
+        has_high_caffeine = any(w in context_text for w in ("kaffee", "espresso", "coffee", "cold brew", "coldbrew", "matcha", "energy drink", "energydrink", "starker tee", "schwarztee"))
+        has_low_caffeine = any(w in context_text for w in ("grüntee", "gruentee", "green tea", "schwarzer tee", "earl grey"))
+        if current_caff in ("", "none", "ohne", "kein"):
+            if has_high_caffeine:
+                details["caffeine_level"] = "high"
+            elif has_low_caffeine:
+                details["caffeine_level"] = "low"
+
+        current_temp = str(details.get("served_temperature", "")).lower()
+        if str(details.get("ice_type")).lower() in ("cubes", "crushed") or has_cubes or has_crushed:
+            if current_temp in ("", "cold", "kalt", "chilled", "gekuehlt", "room_temperature", "zimmertemperatur", "warm"):
+                details["served_temperature"] = "iced"
+        elif current_temp in ("cold", "kalt"):
+            details["served_temperature"] = "chilled"
+
     recipe["recipe_type"] = recipe_type
     recipe["details"] = details
     recipe.setdefault("image_data", None)
@@ -359,7 +453,9 @@ async def import_recipe(source: RecipeImportRequest, _: User = Depends(get_curre
     )
     prompt = f"""Du übernimmst ein Rezept für die deutsche Koch-App Crave.{(" " + steps_guidance) if steps_guidance else ""}
 Extrahiere alle vorhandenen Informationen und vervollständige fehlende Angaben plausibel. Antworte ausschließlich mit einem validen JSON-Objekt mit dem Schlüssel "recipe". Das recipe-Feld muss ein vollständiges RecipeCreate-Objekt sein, einschließlich title, description, recipe_type, appliance, image_data (immer null), servings, total_time_minutes, difficulty, calories, protein_g, carbs_g, fat_g, ingredients, instructions, details, is_ai_generated und tags.
-{type_guidance} Verwende für den gewählten Typ ausschließlich dessen gültige Details. {appliance_guidance} Setze is_ai_generated auf true. Bewahre konkrete Mengen, Zutaten und Schritte aus der Quelle; ergänze nur fehlende Werte sorgfältig und plausibel. Ignoriere Werbung, Kommentare und Navigationstexte. Schreibe alle Texte auf Deutsch. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
+{type_guidance}
+{RECIPE_DETAILS_GUIDANCE}
+{appliance_guidance} Setze is_ai_generated auf true. Bewahre konkrete Mengen, Zutaten und Schritte aus der Quelle; ergänze nur fehlende Werte sorgfältig und plausibel. Ignoriere Werbung, Kommentare und Navigationstexte. Schreibe alle Texte auf Deutsch. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
 {source_label}:
 {source_text}"""
     try:
