@@ -194,6 +194,8 @@ class RecipeDraftResponse(RecipeChatResponse):
 
 class RecipeImportRequest(BaseModel):
     source_text: str = Field(min_length=20, max_length=30_000)
+    # Category the user explicitly picked in the editor; overrides the model's guess.
+    recipe_type: RecipeType | None = None
 
 
 class RecipeImportResponse(BaseModel):
@@ -207,12 +209,38 @@ IMPORT_DETAIL_DEFAULTS: dict[str, dict[str, Any]] = {
     "basic": {"yield_amount": 1, "yield_unit": "Portion", "serving_size_amount": 1, "serving_size_unit": "Portion", "storage_method": "fridge", "shelf_life_days": 2, "storage_tips": [], "component_type": "Grundrezept", "pairs_well_with": [], "resting_time_minutes": 0},
 }
 
-def normalise_imported_recipe(payload: dict[str, Any]) -> RecipeImportResponse:
+# The model occasionally answers with German or plural category names.
+RECIPE_TYPE_ALIASES: dict[str, str] = {
+    "backen": "baking", "gebäck": "baking", "dessert": "baking", "desserts": "baking", "nachtisch": "baking", "süßspeise": "baking",
+    "getränk": "drink", "getränke": "drink", "drinks": "drink",
+    "grundrezept": "basic", "grundrezepte": "basic",
+    "mahlzeit": "meal", "mahlzeiten": "meal", "meals": "meal",
+}
+
+# Shared guidance so suggestions and imports classify recipes the same way.
+RECIPE_TYPE_GUIDANCE = (
+    'Wähle recipe_type passend: "baking" für Kuchen, Torten, Brownies, Kekse, Brot, Brötchen, Muffins und Gebäck '
+    "sowie für alle süßen Desserts und Süßspeisen, auch ohne Ofen (z. B. Tiramisu, Mousse, Panna Cotta, Pudding, Cheesecake, Eis); "
+    "setze bei Desserts ohne Ofen oven_temperature_c auf 0, preheat_required auf false und beschreibe Form und Basis in pan_type und dough_type. "
+    '"drink" für Kaffee, Tee, Smoothies, Shakes, Cocktails und andere Getränke; '
+    '"basic" für Saucen, Dips, Dressings, Fonds, Teige, Würzmischungen und andere Grundrezepte; '
+    '"meal" nur für herzhafte Gerichte.'
+)
+
+
+def resolve_recipe_type(raw: Any, preferred: str | None = None) -> str:
+    """Use the user's explicit choice first, then the model's (possibly German) answer, then meal."""
+    if preferred in IMPORT_DETAIL_DEFAULTS:
+        return preferred
+    candidate = str(raw or "").strip().lower()
+    candidate = RECIPE_TYPE_ALIASES.get(candidate, candidate)
+    return candidate if candidate in IMPORT_DETAIL_DEFAULTS else "meal"
+
+
+def normalise_imported_recipe(payload: dict[str, Any], preferred_type: str | None = None) -> RecipeImportResponse:
     """Accept both nested and flattened detail fields returned by recipe imports."""
     recipe = dict(payload.get("recipe", {}))
-    recipe_type = str(recipe.get("recipe_type", "meal"))
-    if recipe_type not in IMPORT_DETAIL_DEFAULTS:
-        recipe_type = "meal"
+    recipe_type = resolve_recipe_type(recipe.get("recipe_type"), preferred_type)
     defaults = IMPORT_DETAIL_DEFAULTS[recipe_type]
     details = dict(defaults)
     details.update(recipe.get("details") or {})
@@ -235,9 +263,14 @@ def recipe_context(context: RecipeAiContext) -> str:
 @router.post("/recipe-import", response_model=RecipeImportResponse)
 async def import_recipe(source: RecipeImportRequest, _: User = Depends(get_current_user)) -> RecipeImportResponse:
     """Convert copied recipe text into a complete, editable Crave recipe."""
+    type_guidance = (
+        f"Der Nutzer hat die Kategorie {source.recipe_type.value} gewählt; verwende genau diesen recipe_type."
+        if source.recipe_type
+        else RECIPE_TYPE_GUIDANCE
+    )
     prompt = f"""Du übernimmst ein Rezept aus kopiertem Text für die deutsche Koch-App Crave.
 Extrahiere alle vorhandenen Informationen und vervollständige fehlende Angaben plausibel. Antworte ausschließlich mit einem validen JSON-Objekt mit dem Schlüssel "recipe". Das recipe-Feld muss ein vollständiges RecipeCreate-Objekt sein, einschließlich title, description, recipe_type, image_data (immer null), servings, total_time_minutes, difficulty, calories, protein_g, carbs_g, fat_g, ingredients, instructions, details, is_ai_generated und tags.
-Wähle den recipe_type passend: baking für Backwaren, drink für Getränke, basic für Saucen, Dips, Dressings, Teige und ähnliche Grundlagen, sonst meal. Verwende für den gewählten Typ ausschließlich dessen gültige Details. Setze is_ai_generated auf true. Bewahre konkrete Mengen, Zutaten und Schritte aus dem Quelltext; ergänze nur fehlende Werte sorgfältig und plausibel. Schreibe alle Texte auf Deutsch. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
+{type_guidance} Verwende für den gewählten Typ ausschließlich dessen gültige Details. Setze is_ai_generated auf true. Bewahre konkrete Mengen, Zutaten und Schritte aus dem Quelltext; ergänze nur fehlende Werte sorgfältig und plausibel. Schreibe alle Texte auf Deutsch. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
 Quelltext:
 {source.source_text}"""
     try:
@@ -247,7 +280,8 @@ Quelltext:
             text={"format": {"type": "json_object"}},
             max_output_tokens=8_000,
         )
-        return normalise_imported_recipe(json.loads(response.output_text))
+        preferred_type = source.recipe_type.value if source.recipe_type else None
+        return normalise_imported_recipe(json.loads(response.output_text), preferred_type)
     except ValidationError as error:
         logger.warning("Imported recipe violated the schema: %s", error.errors())
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Der kopierte Rezepttext konnte nicht vollständig übernommen werden.") from None
@@ -322,7 +356,7 @@ async def generate_recipe_suggestions(
         else "Die Anfrage baut auf vorherigen Wünschen auf; variiere sinnvoll, ohne bereits gezeigte Titel zu wiederholen."
     )
     prompt = f"""Du bist der kulinarische Ideengeber für die deutsche Koch-App Crave.
-Erstelle exakt drei unterschiedliche, realistische Rezeptvorschläge als valides JSON-Objekt mit genau dem Schlüssel "recipes". Jeder Eintrag muss alle Felder eines RecipeCreate-Objekts enthalten und sofort speicherbar sein. Wähle recipe_type passend: "baking" für Brownies, Kuchen, Kekse, Brot, Brötchen, Muffins, Gebäck und andere Ofenbackwaren; "drink" für Kaffee, Tee, Smoothies, Shakes, Cocktails und andere Getränke; "basic" für Saucen, Dips, Dressings, Fonds, Teige, Würzmischungen und andere Grundrezepte; "meal" für herzhafte Gerichte. Für "meal" verwende cooking_method, required_equipment, prep_time_minutes, cook_time_minutes, meal_prep_friendly, fridge_life_days, freezable, spiciness_level, volume_index und served_temperature. Für "baking" verwende oven_temperature_c, oven_mode, preheat_required, pan_type, pan_size_cm, resting_time_minutes, cooling_time_minutes, dough_type und special_techniques. Für "drink" verwende prep_method, required_equipment, served_temperature, ice_type, abv_percent, caffeine_level, glass_type und volume_ml. Für "basic" verwende yield_amount, yield_unit, serving_size_amount, serving_size_unit, storage_method, shelf_life_days, storage_tips, component_type, pairs_well_with und resting_time_minutes. Verwende ausschließlich difficulty "easy", "medium" oder "hard". Setze image_data auf null und is_ai_generated auf true.
+Erstelle exakt drei unterschiedliche, realistische Rezeptvorschläge als valides JSON-Objekt mit genau dem Schlüssel "recipes". Jeder Eintrag muss alle Felder eines RecipeCreate-Objekts enthalten und sofort speicherbar sein. {RECIPE_TYPE_GUIDANCE} Für "meal" verwende cooking_method, required_equipment, prep_time_minutes, cook_time_minutes, meal_prep_friendly, fridge_life_days, freezable, spiciness_level, volume_index und served_temperature. Für "baking" verwende oven_temperature_c, oven_mode, preheat_required, pan_type, pan_size_cm, resting_time_minutes, cooling_time_minutes, dough_type und special_techniques. Für "drink" verwende prep_method, required_equipment, served_temperature, ice_type, abv_percent, caffeine_level, glass_type und volume_ml. Für "basic" verwende yield_amount, yield_unit, serving_size_amount, serving_size_unit, storage_method, shelf_life_days, storage_tips, component_type, pairs_well_with und resting_time_minutes. Verwende ausschließlich difficulty "easy", "medium" oder "hard". Setze image_data auf null und is_ai_generated auf true.
 Die Beschreibungen müssen natürliches Deutsch sein, zwei kurze Sätze enthalten und ohne Marketingfloskeln auskommen. Zutaten brauchen präzise Namen, exakte Mengen und passende Einheiten. Erkläre die Zubereitung in klaren, ausführbaren Einzelschritten: Zutatenzustand, Reihenfolge, Hitze, Dauer, sichtbare Anzeichen und wichtige Zwischenschritte, soweit sie für ein verlässliches Ergebnis nötig sind. Verwende nur plausible Nährwerte und Zeitangaben. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
 Berücksichtige alle vorherigen Wünsche als zusammenhängenden Verlauf. Der neueste Wunsch konkretisiert oder verändert die bisherigen Wünsche.
 {first_batch_guidance}

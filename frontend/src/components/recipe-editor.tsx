@@ -11,7 +11,7 @@ import { LoadingIndicator } from "@/components/loading-indicator";
 
 const categories = {
 	meal: { label: "Mahlzeit", icon: <Soup size={13} strokeWidth={2.25} aria-hidden="true" /> },
-	baking: { label: "Backen", icon: <CakeSlice size={13} strokeWidth={2.25} aria-hidden="true" /> },
+	baking: { label: "Backen & Desserts", icon: <CakeSlice size={13} strokeWidth={2.25} aria-hidden="true" /> },
 	drink: { label: "Getränk", icon: <CupSoda size={13} strokeWidth={2.25} aria-hidden="true" /> },
 	basic: { label: "Grundrezept", icon: <CookingPot size={13} strokeWidth={2.25} aria-hidden="true" /> },
 } as const;
@@ -75,8 +75,10 @@ function EditorSkeleton() {
 	</main>;
 }
 
-export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?: string; recipeId?: string }) {
-	const [type, setType] = useState<RecipeType>(initialType in categories ? initialType as RecipeType : "meal");
+const isRecipeType = (candidate: unknown): candidate is RecipeType => typeof candidate === "string" && candidate in categories;
+
+export function RecipeEditor({ initialType, recipeId }: { initialType?: string; recipeId?: string }) {
+	const [type, setType] = useState<RecipeType>(isRecipeType(initialType) ? initialType : "meal");
 	const { label, icon } = categories[type];
 	const router = useRouter();
 	const searchParams = useSearchParams();
@@ -93,11 +95,14 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 	const [importText, setImportText] = useState("");
 	const [isImporting, setIsImporting] = useState(false);
 	const [prefillValues, setPrefillValues] = useState<Record<string, unknown> | null>(null);
+	// True when the user deliberately picked a category (via "+" in a category or the selector below).
+	// The import then keeps this category instead of letting the AI guess.
+	const [isTypeChosen, setIsTypeChosen] = useState(isRecipeType(initialType));
 	const saveAsDuplicateRef = useRef(false);
 	const [error, setError] = useState("");
 
 	function applyRecipe(recipe: Record<string, unknown>) {
-		setType(typeof recipe.recipe_type === "string" && recipe.recipe_type in categories ? recipe.recipe_type as RecipeType : "meal");
+		setType(isRecipeType(recipe.recipe_type) ? recipe.recipe_type : "meal");
 		setDescription(String(recipe.description ?? "")); setImageData(String(recipe.image_data ?? ""));
 		setIngredients(Array.isArray(recipe.ingredients) && recipe.ingredients.length ? recipe.ingredients.map((ingredient) => { const item = ingredient as { name?: string; amount?: number; unit?: string }; return { name: item.name ?? "", amount: String(item.amount ?? ""), unit: item.unit ?? "g" }; }) : [{ name: "", amount: "", unit: "g" }]);
 		setSteps(Array.isArray(recipe.instructions) && recipe.instructions.length ? recipe.instructions.map(String) : [""]);
@@ -135,7 +140,7 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 		setError(""); setIsImporting(true);
 		try {
 			const token = sessionStorage.getItem("crave_access_token");
-			const response = await fetch(`${apiUrl}/ai/recipe-import`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ source_text: importText }) });
+			const response = await fetch(`${apiUrl}/ai/recipe-import`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ source_text: importText, recipe_type: isTypeChosen ? type : null }) });
 			const result: { recipe?: Record<string, unknown>; detail?: string } = await response.json().catch(() => ({}));
 			if (!response.ok || !result.recipe) throw new Error(result.detail ?? "Der Rezepttext konnte nicht übernommen werden.");
 			applyRecipe(result.recipe); setImportText("");
@@ -190,7 +195,7 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 			const response = await fetch(shouldOverwrite ? `${apiUrl}/recipes/${editId}` : `${apiUrl}/recipes`, { method: shouldOverwrite ? "PUT" : "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(payload) });
 			const result: { id?: string; detail?: string } = await response.json().catch(() => ({}));
 			if (!response.ok) throw new Error(result.detail ?? "Das Rezept konnte nicht gespeichert werden.");
-			router.push(result.id ? `/recipes/${result.id}` : "/recipes");
+			router.push(result.id ? `/recipes/${result.id}` : `/recipes?type=${type}`);
 		} catch (caught) { setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht gespeichert werden."); }
 		finally { saveAsDuplicateRef.current = false; setIsSaving(false); }
 	}
@@ -198,13 +203,27 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 	if (isLoadingRecipe) return <EditorSkeleton />;
 	return <main className="flex-1 bg-linen pb-28">
 		<form ref={formRef} onSubmit={submit} className="mx-auto max-w-4xl px-5 pt-5 motion-safe:animate-page-in sm:px-8 sm:pt-8">
-			<Link href={editId ? `/recipes/${editId}` : "/recipes"} className="-ml-3.5 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-bark transition hover:bg-espresso/[0.05] hover:text-espresso focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40"><ArrowLeft size={16} strokeWidth={2.25} aria-hidden="true" />{editId ? "Zum Rezept" : "Rezepte"}</Link>
+			<Link href={editId ? `/recipes/${editId}` : `/recipes?type=${type}`} className="-ml-3.5 inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-bark transition hover:bg-espresso/[0.05] hover:text-espresso focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40"><ArrowLeft size={16} strokeWidth={2.25} aria-hidden="true" />{editId ? "Zum Rezept" : categories[type].label}</Link>
 
 			<header className="mt-8 pb-10 sm:mt-12">
 				<p className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-[0.2em] text-caramel">{editId ? "BEARBEITEN" : "NEUES REZEPT"}<span className="h-1 w-1 rounded-full bg-caramel/40" aria-hidden="true" /><span className="inline-flex items-center gap-1">{icon}{label.toUpperCase()}</span></p>
 				<h1 className="mt-3 text-[2.5rem] leading-[1.05] font-semibold tracking-[-0.05em] text-espresso sm:text-5xl">{editId ? "Rezept bearbeiten" : "Rezept hinzufügen"}</h1>
 				<p className="mt-3 max-w-xl text-sm leading-6 text-bark">{editId ? "Passe Angaben an und speichere sie, oder lege eine Kopie als neue Variante an." : "Fülle die Felder aus oder lass Crave einen vorhandenen Rezepttext übernehmen."}</p>
 			</header>
+
+			<Section title="Kategorie" hint="Bestimmt, wo das Rezept in deinem Kochbuch landet.">
+				<fieldset>
+					<legend className="sr-only">Kategorie wählen</legend>
+					<div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+						{(Object.keys(categories) as RecipeType[]).map((item) => <label key={item} className="cursor-pointer">
+							<input type="radio" name="category_choice" value={item} checked={type === item} onChange={() => { setType(item); setIsTypeChosen(true); }} className="peer sr-only" />
+							<span className="flex h-full items-center gap-2 rounded-xl border border-espresso/10 bg-white px-3.5 py-3 text-sm font-medium text-bark transition hover:border-espresso/20 peer-checked:border-caramel peer-checked:bg-caramel/[0.06] peer-checked:text-espresso peer-focus-visible:ring-4 peer-focus-visible:ring-caramel/20">
+								<span className="text-caramel">{categories[item].icon}</span>{categories[item].label}
+							</span>
+						</label>)}
+					</div>
+				</fieldset>
+			</Section>
 
 			{!editId && <Section title="Text übernehmen" hint="Rezept von einer Webseite, Notiz oder aus einem Buch einfügen. Crave füllt das Formular aus.">
 				<textarea value={importText} onChange={(event) => setImportText(event.target.value)} placeholder="Titel, Zutaten, Mengen, Zubereitung…" className={`${fieldBase} min-h-36 resize-none leading-6`} aria-label="Rezepttext einfügen" />
@@ -284,9 +303,9 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 function DetailFields({ type }: { type: RecipeType }) {
 	let fields: React.ReactNode;
 	if (type === "meal") fields = <><Field name="cooking_method" label="Kochmethode" required /><Field name="required_equipment" label="Benötigte Geräte" placeholder="z. B. Pfanne, Topf" /><Field name="prep_time_minutes" label="Vorbereitung" type="number" required defaultValue={0} suffix="Min" /><Field name="cook_time_minutes" label="Kochzeit" type="number" required defaultValue={0} suffix="Min" /><Field name="fridge_life_days" label="Haltbarkeit im Kühlschrank" type="number" required defaultValue={0} suffix="Tage" /><Select name="spiciness_level" label="Schärfe" defaultValue="1" values={["1", "2", "3", "4", "5"]} /><Select name="volume_index" label="Sättigungsvolumen" defaultValue="medium" values={["low", "medium", "high"]} /><Select name="served_temperature" label="Serviertemperatur" defaultValue="hot" values={["hot", "warm", "cold"]} /><Check name="meal_prep_friendly" label="Für Meal Prep geeignet" /><Check name="freezable" label="Einfrierbar" /></>;
-	else if (type === "baking") fields = <><Field name="oven_temperature_c" label="Ofentemperatur" type="number" required suffix="°C" /><Select name="oven_mode" label="Ofenmodus" defaultValue="conventional" values={["conventional", "fan", "hot_air"]} /><Field name="pan_type" label="Backform" required /><Field name="pan_size_cm" label="Formgröße" type="number" step="0.1" required suffix="cm" /><Field name="resting_time_minutes" label="Ruhezeit" type="number" required defaultValue={0} suffix="Min" /><Field name="cooling_time_minutes" label="Abkühlzeit" type="number" required defaultValue={0} suffix="Min" /><Field name="dough_type" label="Teigart" required /><Field name="special_techniques" label="Besondere Techniken" /><Check name="preheat_required" label="Vorheizen erforderlich" checked /></>;
+	else if (type === "baking") fields = <><Field name="oven_temperature_c" label="Ofentemperatur (0 = ohne Ofen)" type="number" required defaultValue={180} suffix="°C" /><Select name="oven_mode" label="Ofenmodus" defaultValue="conventional" values={["conventional", "fan", "hot_air"]} /><Field name="pan_type" label="Form" required placeholder="z. B. Springform, Auflaufform" /><Field name="pan_size_cm" label="Formgröße" type="number" step="0.1" required suffix="cm" /><Field name="resting_time_minutes" label="Ruhezeit" type="number" required defaultValue={0} suffix="Min" /><Field name="cooling_time_minutes" label="Abkühlzeit" type="number" required defaultValue={0} suffix="Min" /><Field name="dough_type" label="Teig / Basis" required placeholder="z. B. Rührteig, Löffelbiskuit" /><Field name="special_techniques" label="Besondere Techniken" /><Check name="preheat_required" label="Vorheizen erforderlich" checked /></>;
 	else if (type === "drink") fields = <><Select name="prep_method" label="Zubereitungsart" defaultValue="blended" values={["blended", "shaken", "stirred", "brewed", "steeped", "built_in_glass"]} /><Field name="required_equipment" label="Benötigte Geräte" /><Select name="served_temperature" label="Serviertemperatur" defaultValue="iced" values={["hot", "iced", "chilled", "room_temperature"]} /><Select name="ice_type" label="Eis" defaultValue="none" values={["none", "cubes", "crushed"]} /><Field name="abv_percent" label="Alkoholgehalt" type="number" step="0.1" required defaultValue={0} suffix="%" /><Select name="caffeine_level" label="Koffein" defaultValue="none" values={["none", "low", "high"]} /><Field name="glass_type" label="Glasart" required /><Field name="volume_ml" label="Volumen" type="number" required suffix="ml" /></>;
 	else fields = <><Field name="yield_amount" label="Gesamtertrag" type="number" step="0.1" required /><Field name="yield_unit" label="Ertragseinheit" required /><Field name="serving_size_amount" label="Portionsmenge" type="number" step="0.1" required /><Field name="serving_size_unit" label="Portionseinheit" required /><Select name="storage_method" label="Aufbewahrung" defaultValue="fridge" values={["fridge", "pantry", "freezer"]} /><Field name="shelf_life_days" label="Haltbarkeit" type="number" required suffix="Tage" /><Field name="component_type" label="Komponentenart" required /><Field name="resting_time_minutes" label="Ruhezeit" type="number" required defaultValue={0} suffix="Min" /><Field name="storage_tips" label="Aufbewahrungshinweise" /><Field name="pairs_well_with" label="Passt gut zu" /></>;
-	const hints: Record<RecipeType, string> = { meal: "Mahlzeiten", baking: "Backrezepte", drink: "Getränke", basic: "Grundrezepte" };
+	const hints: Record<RecipeType, string> = { meal: "Mahlzeiten", baking: "Backrezepte und Desserts", drink: "Getränke", basic: "Grundrezepte" };
 	return <Section title="Details" hint={`Spezifische Angaben für ${hints[type]}.`}><div className="grid gap-5 sm:grid-cols-2">{fields}</div></Section>;
 }
