@@ -17,7 +17,11 @@ function isAlreadyVerified() {
     return sessionStorage.getItem(tokenKey) === verifiedToken;
 }
 
-export function AuthGate({ children }: { children: ReactNode }) {
+/**
+ * Zeigt Inhalte nur angemeldeten Nutzern. Das ist reine UI-Steuerung – das Backend prüft jedes Token selbst.
+ * `allowOffline`: Seiten mit rein lokalen Daten (Einkaufsliste) bleiben ohne Netz auch ohne Token nutzbar.
+ */
+export function AuthGate({ children, allowOffline = false }: { children: ReactNode; allowOffline?: boolean }) {
     const router = useRouter();
     const [isAuthorised, setIsAuthorised] = useState(isAlreadyVerified);
 
@@ -30,6 +34,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
         };
         if (!token) {
             verifiedToken = null;
+            if (allowOffline && !navigator.onLine) {
+                const offlineTimer = window.setTimeout(() => setIsAuthorised(true), 0);
+                return () => window.clearTimeout(offlineTimer);
+            }
             router.replace("/login");
             return;
         }
@@ -37,15 +45,17 @@ export function AuthGate({ children }: { children: ReactNode }) {
         // Bereits geprüft: Inhalt sofort zeigen, Token aber im Hintergrund erneut validieren.
         void fetch(`${apiUrl}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
             .then((response) => {
-                if (!response.ok) {
+                // Nur ein abgelehntes Token meldet ab – Serverfehler (5xx) sollen niemanden ausloggen.
+                if (response.status === 401 || response.status === 403) {
                     rejectSession();
                     return;
                 }
-                verifiedToken = token;
+                if (response.ok) verifiedToken = token;
                 setIsAuthorised(true);
             })
-            .catch(rejectSession);
-    }, [router]);
+            // Kein Netz: angemeldet bleiben, damit z. B. die Einkaufsliste offline nutzbar ist.
+            .catch(() => setIsAuthorised(true));
+    }, [allowOffline, router]);
 
     if (!isAuthorised) {
         return <main className="grid min-h-screen place-items-center bg-linen text-sm font-semibold">

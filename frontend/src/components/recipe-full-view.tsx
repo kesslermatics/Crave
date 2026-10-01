@@ -2,13 +2,16 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, BookmarkPlus, Clock3, Flame, Gauge, Pencil, Trash2, Users } from "lucide-react";
+import { ArrowLeft, BookmarkPlus, Clock3, Flame, Gauge, Minus, Pencil, Plus, RotateCcw, Share2, ShoppingBasket, Trash2, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 
 import { LoadingIndicator } from "@/components/loading-indicator";
 import { RecipeChat } from "@/components/recipe-chat";
+import { Toast, toastActionClass, useToast } from "@/components/toast";
+import { formatQuantity } from "@/lib/amount";
 import { apiUrl } from "@/lib/api";
+import { addShoppingItems, guessSection, parseShoppingInput, shareText, shoppingListText, type ShoppingDraft } from "@/lib/shopping-list";
 import { formatDuration } from "@/lib/duration";
 import { recipeListHref } from "@/lib/recipe-filter";
 
@@ -47,10 +50,10 @@ function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactN
     </div>;
 }
 
-function RecipeHero({ recipe, proposal }: { recipe: Recipe; proposal: boolean }) {
+function RecipeHero({ recipe, proposal, servings }: { recipe: Recipe; proposal: boolean; servings: number }) {
     const meta = [
         { icon: Clock3, label: "Zeit", value: formatDuration(recipe.total_time_minutes) },
-        { icon: Users, label: "Portionen", value: String(recipe.servings) },
+        { icon: Users, label: "Portionen", value: String(servings) },
         { icon: Gauge, label: "Niveau", value: labels[recipe.difficulty] ?? recipe.difficulty },
         { icon: Flame, label: "Pro Portion", value: `${recipe.calories} kcal` },
     ];
@@ -79,36 +82,62 @@ function RecipeHero({ recipe, proposal }: { recipe: Recipe; proposal: boolean })
     </header>;
 }
 
-function RecipeBody({ recipe }: { recipe: Recipe }) {
+const MAX_SERVINGS = 100;
+const stepButton = "grid h-8 w-8 place-items-center rounded-full text-espresso transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40 disabled:opacity-35 disabled:hover:bg-transparent";
+
+/** + / – Schalter für die Portionenzahl. */
+function ServingStepper({ servings, original, onChange }: { servings: number; original: number; onChange: (value: number) => void }) {
+    return <div className="mt-4 flex items-center justify-between gap-3">
+        <div className="inline-flex items-center rounded-full bg-cream/70 p-1" role="group" aria-label="Portionen anpassen">
+            <button type="button" onClick={() => onChange(servings - 1)} disabled={servings <= 1} className={stepButton} aria-label="Eine Portion weniger"><Minus size={15} strokeWidth={2.5} aria-hidden="true" /></button>
+            <output className="min-w-24 text-center text-sm font-semibold text-espresso tabular-nums" aria-live="polite">{servings} {servings === 1 ? "Portion" : "Portionen"}</output>
+            <button type="button" onClick={() => onChange(servings + 1)} disabled={servings >= MAX_SERVINGS} className={stepButton} aria-label="Eine Portion mehr"><Plus size={15} strokeWidth={2.5} aria-hidden="true" /></button>
+        </div>
+        {servings !== original && <button type="button" onClick={() => onChange(original)} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1.5 text-xs font-medium text-bark transition hover:bg-espresso/[0.05] hover:text-espresso">
+            <RotateCcw size={12} strokeWidth={2.25} aria-hidden="true" />Original ({original})
+        </button>}
+    </div>;
+}
+
+function RecipeBody({ recipe, servings, onServingsChange, ingredients, shoppingActions }: { recipe: Recipe; servings: number; onServingsChange: (value: number) => void; ingredients: Ingredient[]; shoppingActions: ReactNode }) {
+    const [nutritionMode, setNutritionMode] = useState<"total" | "portion">("total");
     const details = Object.entries(recipe.details)
         .filter(([key]) => key !== "required_equipment")
         .map(([key, value]) => [key, displayValue(key, value)] as const)
         .filter(([, value]) => value !== "");
+    // Nährwerte sind pro Portion gespeichert; „Gesamt“ rechnet sie auf die gewählte Portionenzahl hoch.
+    const multiplier = nutritionMode === "total" ? servings : 1;
     const nutrition = [
-        { label: "Kalorien", value: recipe.calories, unit: "kcal" },
-        { label: "Protein", value: recipe.protein_g, unit: "g" },
-        { label: "Kohlenhydrate", value: recipe.carbs_g, unit: "g" },
-        { label: "Fett", value: recipe.fat_g, unit: "g" },
+        { label: "Kalorien", value: Math.round(recipe.calories * multiplier), unit: "kcal" },
+        { label: "Protein", value: Math.round(recipe.protein_g * multiplier), unit: "g" },
+        { label: "Kohlenhydrate", value: Math.round(recipe.carbs_g * multiplier), unit: "g" },
+        { label: "Fett", value: Math.round(recipe.fat_g * multiplier), unit: "g" },
     ];
+    const modeButton = (mode: "total" | "portion", label: string) => <button type="button" onClick={() => setNutritionMode(mode)} aria-pressed={nutritionMode === mode} className={`rounded-full px-3 py-1 text-xs font-medium transition ${nutritionMode === mode ? "bg-white text-espresso shadow-sm" : "text-bark hover:text-espresso"}`}>{label}</button>;
 
     return <div className="mt-12 grid gap-14 sm:mt-16 lg:grid-cols-[19rem_minmax(0,1fr)] lg:gap-16">
         <aside className="space-y-12 lg:sticky lg:top-24 lg:self-start">
             <section>
-                <SectionTitle aside={`für ${recipe.servings} ${recipe.servings === 1 ? "Portion" : "Portionen"}`}>Zutaten</SectionTitle>
-                <ul className="mt-5">
-                    {recipe.ingredients.map((ingredient, index) => <li key={`${ingredient.name}-${index}`} className="flex items-baseline justify-between gap-4 border-b border-espresso/[0.07] py-3 text-[15px] last:border-0">
+                <SectionTitle>Zutaten</SectionTitle>
+                <ServingStepper servings={servings} original={recipe.servings} onChange={onServingsChange} />
+                <ul className="mt-4">
+                    {ingredients.map((ingredient, index) => <li key={`${ingredient.name}-${index}`} className="flex items-baseline justify-between gap-4 border-b border-espresso/[0.07] py-3 text-[15px] last:border-0">
                         <span className="text-espresso">{ingredient.name}</span>
-                        <span className="shrink-0 text-sm font-medium text-bark tabular-nums">{ingredient.amount} {ingredient.unit}</span>
+                        <span className="shrink-0 text-sm font-medium text-bark tabular-nums">{formatQuantity(ingredient.amount, ingredient.unit)}</span>
                     </li>)}
                 </ul>
+                {shoppingActions}
             </section>
 
             <section>
-                <SectionTitle aside="pro Portion">Nährwerte</SectionTitle>
+                <div className="flex items-center justify-between gap-4">
+                    <h2 className="text-xl font-semibold tracking-[-0.03em] text-espresso sm:text-2xl">Nährwerte</h2>
+                    <div className="inline-flex rounded-full bg-cream/70 p-0.5" role="group" aria-label="Nährwerte anzeigen">{modeButton("total", `Gesamt (${servings})`)}{modeButton("portion", "Pro Portion")}</div>
+                </div>
                 <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-5">
                     {nutrition.map((item) => <div key={item.label}>
                         <dt className="text-xs text-bark/80">{item.label}</dt>
-                        <dd className="mt-0.5 text-lg font-semibold tracking-[-0.02em] text-espresso tabular-nums">{item.value}<span className="ml-1 text-sm font-medium text-bark">{item.unit}</span></dd>
+                        <dd className="mt-0.5 text-lg font-semibold tracking-[-0.02em] text-espresso tabular-nums">{new Intl.NumberFormat("de-DE").format(item.value)}<span className="ml-1 text-sm font-medium text-bark">{item.unit}</span></dd>
                     </div>)}
                 </dl>
             </section>
@@ -148,6 +177,54 @@ function FullView({ recipe, proposal, children }: { recipe: Recipe; proposal: bo
         {isSaving ? <LoadingIndicator label="Wird gespeichert…" light /> : <><BookmarkPlus size={16} strokeWidth={2.25} aria-hidden="true" />In meine Rezepte</>}
     </button>;
 
+    // Portionen skalieren: alle Mengen rechnen sich relativ zur Originalportionenzahl um.
+    const originalServings = Math.max(1, recipe.servings || 1);
+    const [servings, setServings] = useState(originalServings);
+    const factor = servings / originalServings;
+    const scaledIngredients = recipe.ingredients.map((ingredient) => ({ ...ingredient, amount: ingredient.amount * factor }));
+    const changeServings = (value: number) => setServings(Math.min(MAX_SERVINGS, Math.max(1, value)));
+
+    const { toast, show: showToast } = useToast();
+    const [isAddingToList, setIsAddingToList] = useState(false);
+    const listSource = servings === originalServings ? recipe.title : `${recipe.title} (${servings} P.)`;
+
+    async function addToShoppingList() {
+        setIsAddingToList(true);
+        const ingredients = scaledIngredients.map((item) => ({ name: item.name, amount: item.amount > 0 ? Math.round(item.amount * 100) / 100 : null, unit: item.unit }));
+        let offline = false;
+        let drafts: ShoppingDraft[];
+        try {
+            // KI vereinheitlicht Namen („Zwiebel, gewürfelt“ → „Zwiebeln“) und ordnet Abteilungen zu.
+            drafts = await parseShoppingInput({ ingredients });
+        } catch {
+            offline = true;
+            drafts = ingredients;
+        }
+        const { added, merged } = addShoppingItems(drafts, listSource);
+        setIsAddingToList(false);
+        const count = added + merged;
+        showToast(`${count} ${count === 1 ? "Zutat" : "Zutaten"} auf der Liste${merged ? ` · ${merged} zusammengefasst` : ""}${offline ? " (ohne KI sortiert)" : ""}`, <Link href="/einkaufsliste" className={toastActionClass}>Ansehen</Link>);
+    }
+
+    async function exportIngredients() {
+        const items = scaledIngredients.map((item) => ({ name: item.name, amount: item.amount > 0 ? item.amount : null, unit: item.unit, section: guessSection(item.name) }));
+        try {
+            const result = await shareText(shoppingListText(items, `Einkaufsliste: ${recipe.title} (${servings} ${servings === 1 ? "Portion" : "Portionen"})`), recipe.title);
+            if (result === "copied") showToast("Zutatenliste in die Zwischenablage kopiert");
+        } catch {
+            showToast("Exportieren hat nicht geklappt");
+        }
+    }
+
+    const shoppingActions = <div className="mt-5 flex flex-wrap gap-2">
+        <button type="button" onClick={addToShoppingList} disabled={isAddingToList} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full bg-espresso px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-caramel focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40 disabled:opacity-80">
+            {isAddingToList ? <LoadingIndicator label="Wird hinzugefügt…" light /> : <><ShoppingBasket size={16} strokeWidth={2.25} aria-hidden="true" />Zur Einkaufsliste</>}
+        </button>
+        <button type="button" onClick={exportIngredients} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-bark ring-1 ring-espresso/10 transition hover:bg-white hover:text-espresso focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40" aria-label="Zutatenliste exportieren oder teilen">
+            <Share2 size={16} strokeWidth={2.25} aria-hidden="true" />Exportieren
+        </button>
+    </div>;
+
     return <main className="flex-1 bg-linen pb-32">
         <article className="mx-auto max-w-5xl px-5 pt-5 motion-safe:animate-page-in sm:px-8 sm:pt-8">
             <div className="-mx-3.5 flex items-center justify-between gap-3">
@@ -155,14 +232,15 @@ function FullView({ recipe, proposal, children }: { recipe: Recipe; proposal: bo
                 {proposal ? saveButton("hidden sm:inline-flex") : <Link href={`/recipes/${recipe.id}/edit`} className={pillGhost}><Pencil size={15} strokeWidth={2.25} aria-hidden="true" />Bearbeiten</Link>}
             </div>
 
-            <RecipeHero recipe={recipe} proposal={proposal} />
-            <RecipeBody recipe={recipe} />
+            <RecipeHero recipe={recipe} proposal={proposal} servings={servings} />
+            <RecipeBody recipe={recipe} servings={servings} onServingsChange={changeServings} ingredients={scaledIngredients} shoppingActions={shoppingActions} />
 
             {error && <p role="alert" className="mt-10 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
             {proposal && <div className="mt-14 flex justify-center">{saveButton("w-full py-3.5 sm:w-auto sm:px-8")}</div>}
 
             {children}
         </article>
+        <Toast toast={toast} />
     </main>;
 }
 
