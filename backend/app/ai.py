@@ -200,6 +200,33 @@ class RecipeImportResponse(BaseModel):
     recipe: RecipeCreate
 
 
+IMPORT_DETAIL_DEFAULTS: dict[str, dict[str, Any]] = {
+    "meal": {"cooking_method": "Kochen", "required_equipment": [], "prep_time_minutes": 10, "cook_time_minutes": 20, "meal_prep_friendly": False, "fridge_life_days": 2, "freezable": False, "spiciness_level": 1, "volume_index": "medium", "served_temperature": "hot"},
+    "baking": {"oven_temperature_c": 180, "oven_mode": "conventional", "preheat_required": True, "pan_type": "Backform", "pan_size_cm": 20, "resting_time_minutes": 0, "cooling_time_minutes": 15, "dough_type": "Rührteig", "special_techniques": []},
+    "drink": {"prep_method": "stirred", "required_equipment": [], "served_temperature": "cold", "ice_type": "none", "abv_percent": 0, "caffeine_level": "none", "glass_type": "Glas", "volume_ml": 250},
+    "basic": {"yield_amount": 1, "yield_unit": "Portion", "serving_size_amount": 1, "serving_size_unit": "Portion", "storage_method": "fridge", "shelf_life_days": 2, "storage_tips": [], "component_type": "Grundrezept", "pairs_well_with": [], "resting_time_minutes": 0},
+}
+
+def normalise_imported_recipe(payload: dict[str, Any]) -> RecipeImportResponse:
+    """Accept both nested and flattened detail fields returned by recipe imports."""
+    recipe = dict(payload.get("recipe", {}))
+    recipe_type = str(recipe.get("recipe_type", "meal"))
+    if recipe_type not in IMPORT_DETAIL_DEFAULTS:
+        recipe_type = "meal"
+    defaults = IMPORT_DETAIL_DEFAULTS[recipe_type]
+    details = dict(defaults)
+    details.update(recipe.get("details") or {})
+    for key in defaults:
+        if key in recipe:
+            details[key] = recipe.pop(key)
+    recipe["recipe_type"] = recipe_type
+    recipe["details"] = details
+    recipe.setdefault("image_data", None)
+    recipe.setdefault("is_ai_generated", True)
+    recipe.setdefault("tags", [])
+    return RecipeImportResponse(recipe=RecipeCreate.model_validate(recipe))
+
+
 def recipe_context(context: RecipeAiContext) -> str:
     """Serialize recipe data as data, not instructions, for the model prompt."""
     return json.dumps(context.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
@@ -220,7 +247,7 @@ Quelltext:
             text={"format": {"type": "json_object"}},
             max_output_tokens=8_000,
         )
-        return RecipeImportResponse.model_validate(json.loads(response.output_text))
+        return normalise_imported_recipe(json.loads(response.output_text))
     except ValidationError as error:
         logger.warning("Imported recipe violated the schema: %s", error.errors())
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Der kopierte Rezepttext konnte nicht vollständig übernommen werden.") from None
