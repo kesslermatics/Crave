@@ -2,10 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Clock3, Trash2 } from "lucide-react";
+import { ArrowLeft, BookmarkPlus, Clock3, Flame, Gauge, Pencil, Trash2, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 
+import { LoadingIndicator } from "@/components/loading-indicator";
 import { RecipeChat } from "@/components/recipe-chat";
 import { apiUrl } from "@/lib/api";
 import { formatDuration } from "@/lib/duration";
@@ -27,6 +28,9 @@ const labels: Record<string, string> = {
     oven_temperature_c: "Ofentemperatur", oven_mode: "Ofenmodus", storage_method: "Aufbewahrung",
 };
 
+const pillGhost = "inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-sm font-semibold text-bark transition hover:bg-espresso/[0.05] hover:text-espresso focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40";
+const pillPrimary = "inline-flex items-center justify-center gap-2 rounded-full bg-caramel px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_-8px_rgba(153,97,48,0.6)] transition hover:bg-espresso focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40 focus-visible:ring-offset-2 focus-visible:ring-offset-linen disabled:opacity-60";
+
 function displayValue(key: string, value: unknown) {
     if (typeof value === "boolean") return value ? "Ja" : "Nein";
     if (Array.isArray(value)) return value.join(", ");
@@ -35,29 +39,179 @@ function displayValue(key: string, value: unknown) {
     return labels[String(value)] ?? String(value);
 }
 
+function SectionTitle({ children, aside }: { children: ReactNode; aside?: ReactNode }) {
+    return <div className="flex items-baseline justify-between gap-4">
+        <h2 className="text-xl font-semibold tracking-[-0.03em] text-espresso sm:text-2xl">{children}</h2>
+        {aside && <span className="text-xs font-medium text-bark/80">{aside}</span>}
+    </div>;
+}
+
 function RecipeHero({ recipe, proposal }: { recipe: Recipe; proposal: boolean }) {
-    const eyebrow = proposal ? "DEIN VORSCHLAG" : "DEIN REZEPT";
-    if (!recipe.image_data) return <header className="py-6 sm:py-10"><p className="text-[11px] font-bold tracking-[0.18em] text-caramel">{eyebrow}</p><h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-[-0.065em] text-espresso sm:text-6xl">{recipe.title}</h1><p className="mt-5 max-w-2xl text-sm leading-7 text-bark sm:text-base">{recipe.description}</p><div className="mt-7 h-1 w-16 rounded-full bg-caramel" /></header>;
-    return <header className="relative min-h-[25rem] overflow-hidden rounded-[2rem] bg-espresso sm:min-h-[33rem]"><Image src={recipe.image_data} alt={recipe.title} fill unoptimized className="object-cover" priority /><div className="absolute inset-0 bg-gradient-to-t from-espresso via-espresso/40 to-transparent" /><div className="absolute inset-x-0 bottom-0 p-6 text-white sm:p-10"><p className="text-[11px] font-bold tracking-[0.18em] text-saffron">{eyebrow}</p><h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-[-0.065em] sm:text-6xl">{recipe.title}</h1><p className="mt-4 max-w-2xl text-sm leading-6 text-white/85 sm:text-base">{recipe.description}</p></div></header>;
+    const meta = [
+        { icon: Clock3, label: "Zeit", value: formatDuration(recipe.total_time_minutes) },
+        { icon: Users, label: "Portionen", value: String(recipe.servings) },
+        { icon: Gauge, label: "Niveau", value: labels[recipe.difficulty] ?? recipe.difficulty },
+        { icon: Flame, label: "Pro Portion", value: `${recipe.calories} kcal` },
+    ];
+    return <header className="mt-8 sm:mt-12">
+        <p className="text-[11px] font-semibold tracking-[0.2em] text-caramel">{proposal ? "DEIN VORSCHLAG" : "DEIN REZEPT"}</p>
+        <h1 className="mt-3 max-w-3xl text-[2.5rem] leading-[1.05] font-semibold tracking-[-0.05em] text-balance text-espresso sm:text-6xl">{recipe.title}</h1>
+        {recipe.description && <p className="mt-5 max-w-2xl text-base leading-7 text-pretty text-bark sm:text-lg sm:leading-8">{recipe.description}</p>}
+
+        <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-5 border-t border-espresso/10 pt-6 sm:flex sm:flex-wrap sm:gap-x-12">
+            {meta.map(({ icon: Icon, label, value }) => <div key={label} className="flex items-center gap-3">
+                <Icon size={18} strokeWidth={2} className="shrink-0 text-caramel" aria-hidden="true" />
+                <div>
+                    <dt className="text-[11px] font-medium tracking-wide text-bark/75">{label}</dt>
+                    <dd className="text-sm font-semibold text-espresso">{value}</dd>
+                </div>
+            </div>)}
+        </dl>
+
+        {recipe.tags.length > 0 && <ul className="mt-6 flex flex-wrap gap-2" aria-label="Tags">
+            {recipe.tags.map((tag) => <li key={tag} className="rounded-full bg-cream/80 px-3 py-1 text-xs font-medium text-bark">#{tag}</li>)}
+        </ul>}
+
+        {recipe.image_data && <div className="relative mt-10 aspect-[4/3] overflow-hidden rounded-3xl bg-cream sm:aspect-[16/9]">
+            <Image src={recipe.image_data} alt={recipe.title} fill unoptimized loading="eager" fetchPriority="high" className="animate-fade-in object-cover" />
+        </div>}
+    </header>;
 }
 
 function RecipeBody({ recipe }: { recipe: Recipe }) {
-    const details = Object.entries(recipe.details).filter(([key]) => key !== "required_equipment");
-    return <div className="py-8 sm:py-10"><div className="flex flex-wrap gap-3 border-b border-espresso/10 pb-7"><span className="inline-flex items-center gap-1.5 rounded-full bg-saffron/30 px-4 py-2 text-sm font-bold text-espresso"><Clock3 size={16} strokeWidth={2.25} aria-hidden="true" />{formatDuration(recipe.total_time_minutes)}</span><span className="rounded-full bg-sand px-4 py-2 text-sm font-bold text-espresso">{recipe.servings} Portionen</span><span className="rounded-full bg-sand px-4 py-2 text-sm font-bold text-espresso">{labels[recipe.difficulty] ?? recipe.difficulty}</span>{recipe.tags.map((tag) => <span key={tag} className="rounded-full border border-espresso/10 px-3 py-2 text-xs font-bold text-bark">#{tag}</span>)}</div><div className="mt-8 grid gap-10 lg:grid-cols-[minmax(0,1fr)_18rem]"><div className="space-y-10"><section><h2 className="text-2xl font-semibold tracking-[-0.04em] text-espresso">Zutaten</h2><ul className="mt-4 divide-y divide-espresso/10 border-y border-espresso/10">{recipe.ingredients.map((ingredient, index) => <li key={`${ingredient.name}-${index}`} className="flex items-center justify-between gap-4 px-2 py-3 text-sm"><span className="font-semibold text-espresso">{ingredient.name}</span><span className="text-bark">{ingredient.amount} {ingredient.unit}</span></li>)}</ul></section><section><h2 className="text-2xl font-semibold tracking-[-0.04em] text-espresso">Zubereitung</h2><ol className="mt-4 space-y-3">{recipe.instructions.map((instruction, index) => <li key={`${instruction}-${index}`} className="flex gap-4 py-2 text-sm leading-6 text-bark"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-caramel text-xs font-bold text-white">{index + 1}</span><span>{instruction}</span></li>)}</ol></section></div><aside className="space-y-8"><section><h2 className="text-lg font-semibold text-espresso">Nährwerte</h2><dl className="mt-4 space-y-3 border-y border-espresso/10 py-4 text-sm"><Metric label="Kalorien" value={`${recipe.calories} kcal`} /><Metric label="Protein" value={`${recipe.protein_g} g`} /><Metric label="Kohlenhydrate" value={`${recipe.carbs_g} g`} /><Metric label="Fett" value={`${recipe.fat_g} g`} /></dl></section><section><h2 className="text-lg font-semibold text-espresso">Eigenschaften</h2><dl className="mt-4 space-y-3 border-y border-espresso/10 py-4 text-sm">{details.map(([key, value]) => <div key={key}><dt className="text-xs font-bold text-bark">{labels[key] ?? key.replaceAll("_", " ")}</dt><dd className="mt-1 font-semibold text-espresso">{displayValue(key, value)}</dd></div>)}</dl></section></aside></div></div>;
+    const details = Object.entries(recipe.details)
+        .filter(([key]) => key !== "required_equipment")
+        .map(([key, value]) => [key, displayValue(key, value)] as const)
+        .filter(([, value]) => value !== "");
+    const nutrition = [
+        { label: "Kalorien", value: recipe.calories, unit: "kcal" },
+        { label: "Protein", value: recipe.protein_g, unit: "g" },
+        { label: "Kohlenhydrate", value: recipe.carbs_g, unit: "g" },
+        { label: "Fett", value: recipe.fat_g, unit: "g" },
+    ];
+
+    return <div className="mt-12 grid gap-14 sm:mt-16 lg:grid-cols-[19rem_minmax(0,1fr)] lg:gap-16">
+        <aside className="space-y-12 lg:sticky lg:top-24 lg:self-start">
+            <section>
+                <SectionTitle aside={`für ${recipe.servings} ${recipe.servings === 1 ? "Portion" : "Portionen"}`}>Zutaten</SectionTitle>
+                <ul className="mt-5">
+                    {recipe.ingredients.map((ingredient, index) => <li key={`${ingredient.name}-${index}`} className="flex items-baseline justify-between gap-4 border-b border-espresso/[0.07] py-3 text-[15px] last:border-0">
+                        <span className="text-espresso">{ingredient.name}</span>
+                        <span className="shrink-0 text-sm font-medium text-bark tabular-nums">{ingredient.amount} {ingredient.unit}</span>
+                    </li>)}
+                </ul>
+            </section>
+
+            <section>
+                <SectionTitle aside="pro Portion">Nährwerte</SectionTitle>
+                <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-5">
+                    {nutrition.map((item) => <div key={item.label}>
+                        <dt className="text-xs text-bark/80">{item.label}</dt>
+                        <dd className="mt-0.5 text-lg font-semibold tracking-[-0.02em] text-espresso tabular-nums">{item.value}<span className="ml-1 text-sm font-medium text-bark">{item.unit}</span></dd>
+                    </div>)}
+                </dl>
+            </section>
+        </aside>
+
+        <div className="space-y-14">
+            <section>
+                <SectionTitle aside={`${recipe.instructions.length} Schritte`}>Zubereitung</SectionTitle>
+                <ol className="mt-5">
+                    {recipe.instructions.map((instruction, index) => <li key={`${instruction}-${index}`} className="grid grid-cols-[2.25rem_minmax(0,1fr)] gap-3 border-t border-espresso/[0.07] py-5 first:border-0 first:pt-2">
+                        <span className="pt-0.5 text-sm font-semibold text-caramel tabular-nums" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                        <p className="text-[15px] leading-7 text-espresso/90">{instruction}</p>
+                    </li>)}
+                </ol>
+            </section>
+
+            {details.length > 0 && <section>
+                <SectionTitle>Eigenschaften</SectionTitle>
+                <dl className="mt-5 grid gap-x-10 sm:grid-cols-2">
+                    {details.map(([key, value]) => <div key={key} className="flex items-baseline justify-between gap-4 border-b border-espresso/[0.07] py-3 text-sm">
+                        <dt className="text-bark">{labels[key] ?? key.replaceAll("_", " ")}</dt>
+                        <dd className="text-right font-medium text-espresso">{value}</dd>
+                    </div>)}
+                </dl>
+            </section>}
+        </div>
+    </div>;
 }
 
-function Metric({ label, value }: { label: string; value: string }) { return <div className="flex justify-between"><dt className="text-bark">{label}</dt><dd className="font-bold text-espresso">{value}</dd></div>; }
-
-function FullView({ recipe, proposal }: { recipe: Recipe; proposal: boolean }) {
+function FullView({ recipe, proposal, children }: { recipe: Recipe; proposal: boolean; children?: ReactNode }) {
     const router = useRouter();
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState("");
     async function save() { setIsSaving(true); setError(""); try { const token = sessionStorage.getItem("crave_access_token"); const response = await fetch(`${apiUrl}/recipes`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(recipe) }); const result: { id?: string; detail?: string } = await response.json().catch(() => ({})); if (!response.ok || !result.id) throw new Error(result.detail ?? "Das Rezept konnte nicht gespeichert werden."); sessionStorage.removeItem("crave_selected_suggestion"); router.replace(`/recipes/${result.id}`); } catch (caught) { setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht gespeichert werden."); } finally { setIsSaving(false); } }
-    return <main className="flex-1 bg-linen pb-28"><div className="mx-auto max-w-5xl px-5 py-6 sm:px-8 sm:py-10"><Link href={proposal ? "/" : "/recipes"} className="inline-flex items-center gap-1.5 text-sm font-bold text-caramel transition hover:text-espresso"><ArrowLeft size={16} strokeWidth={2.25} aria-hidden="true" />{proposal ? "Zu den Vorschlägen" : "Zu Rezepten"}</Link><article className="mt-5"><RecipeHero recipe={recipe} proposal={proposal} /><RecipeBody recipe={recipe} />{error && <p role="alert" className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}<div className="pb-6 sm:pb-10">{proposal ? <button onClick={save} disabled={isSaving} className="w-full rounded-full bg-caramel px-6 py-4 text-sm font-bold text-white transition hover:bg-espresso disabled:opacity-60">{isSaving ? "Rezept wird gespeichert…" : "In meine Rezepte speichern"}</button> : <Link href={`/recipes/new?type=${recipe.recipe_type}&edit=${recipe.id}`} className="block w-full rounded-full border border-caramel px-6 py-4 text-center text-sm font-bold text-caramel transition hover:bg-caramel hover:text-white">Rezept bearbeiten</Link>}</div></article></div></main>;
+
+    const saveButton = (className = "") => <button onClick={save} disabled={isSaving} className={`${pillPrimary} ${className}`}>
+        {isSaving ? <LoadingIndicator label="Wird gespeichert…" light /> : <><BookmarkPlus size={16} strokeWidth={2.25} aria-hidden="true" />In meine Rezepte</>}
+    </button>;
+
+    return <main className="flex-1 bg-linen pb-32">
+        <article className="mx-auto max-w-5xl px-5 pt-5 motion-safe:animate-page-in sm:px-8 sm:pt-8">
+            <div className="-mx-3.5 flex items-center justify-between gap-3">
+                <Link href={proposal ? "/" : "/recipes"} className={pillGhost}><ArrowLeft size={16} strokeWidth={2.25} aria-hidden="true" />{proposal ? "Vorschläge" : "Rezepte"}</Link>
+                {proposal ? saveButton("hidden sm:inline-flex") : <Link href={`/recipes/${recipe.id}/edit`} className={pillGhost}><Pencil size={15} strokeWidth={2.25} aria-hidden="true" />Bearbeiten</Link>}
+            </div>
+
+            <RecipeHero recipe={recipe} proposal={proposal} />
+            <RecipeBody recipe={recipe} />
+
+            {error && <p role="alert" className="mt-10 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
+            {proposal && <div className="mt-14 flex justify-center">{saveButton("w-full py-3.5 sm:w-auto sm:px-8")}</div>}
+
+            {children}
+        </article>
+    </main>;
 }
 
-export function SuggestionDetail() { const [recipe, setRecipe] = useState<Recipe | null>(null); const [isRestoring, setIsRestoring] = useState(true); useEffect(() => { const restore = window.setTimeout(() => { const stored = sessionStorage.getItem("crave_selected_suggestion"); if (stored) setRecipe(JSON.parse(stored)); setIsRestoring(false); }, 0); return () => window.clearTimeout(restore); }, []); if (isRestoring) return <main className="flex-1 bg-linen p-8 text-center text-bark">Vorschlag wird geladen…</main>; if (!recipe) return <main className="flex-1 bg-linen p-8 text-center"><p className="text-bark">Dieser Vorschlag ist nicht mehr verfügbar.</p><Link href="/" className="mt-4 inline-block font-bold text-caramel">Neue Ideen finden</Link></main>; return <><FullView recipe={recipe} proposal /><div className="mx-auto max-w-5xl px-5 pb-28 sm:px-8"><RecipeChat recipe={recipe} /></div></>; }
+function RecipeSkeleton() {
+    const bar = "rounded-full bg-espresso/[0.06] motion-safe:animate-shimmer";
+    return <main className="flex-1 bg-linen pb-32" aria-busy="true" aria-label="Rezept wird geladen">
+        <div className="mx-auto max-w-5xl animate-fade-in px-5 pt-8 [animation-delay:150ms] sm:px-8 sm:pt-11">
+            <div className={`${bar} h-4 w-24`} />
+            <div className={`${bar} mt-12 h-3 w-28`} />
+            <div className={`${bar} mt-5 h-10 w-4/5 sm:h-14`} />
+            <div className={`${bar} mt-6 h-4 w-3/5`} />
+            <div className="mt-10 flex gap-10 border-t border-espresso/10 pt-6">{[0, 1, 2, 3].map((item) => <div key={item} className={`${bar} h-8 w-20`} />)}</div>
+            <div className="mt-10 aspect-[16/9] rounded-3xl bg-espresso/[0.05] motion-safe:animate-shimmer" />
+        </div>
+    </main>;
+}
 
-function DeleteRecipeButton({ recipeId }: { recipeId: string }) { const router = useRouter(); const [isDeleting, setIsDeleting] = useState(false); const [error, setError] = useState(""); async function remove() { if (!window.confirm("Dieses Rezept wirklich dauerhaft löschen?")) return; setError(""); setIsDeleting(true); try { const token = sessionStorage.getItem("crave_access_token"); const response = await fetch(`${apiUrl}/recipes/${recipeId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) { const result: { detail?: string } = await response.json().catch(() => ({})); throw new Error(result.detail ?? "Das Rezept konnte nicht gelöscht werden."); } router.replace("/recipes"); } catch (caught) { setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht gelöscht werden."); } finally { setIsDeleting(false); } } return <div className="mt-10 border-t border-espresso/10 pt-6"><button onClick={remove} disabled={isDeleting} className="inline-flex items-center gap-2 rounded-full border border-red-200 px-4 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:opacity-60"><Trash2 size={16} strokeWidth={2.25} aria-hidden="true" />{isDeleting ? "Wird gelöscht…" : "Rezept löschen"}</button>{error && <p role="alert" className="mt-3 text-sm font-medium text-red-700">{error}</p>}</div>; }
+function Notice({ children, action }: { children: ReactNode; action?: ReactNode }) {
+    return <main className="grid flex-1 place-items-center bg-linen px-5 pb-32 text-center">
+        <div className="motion-safe:animate-page-in"><p className="text-sm text-bark">{children}</p>{action}</div>
+    </main>;
+}
 
-export function StoredRecipeDetail({ recipeId }: { recipeId: string }) { const [recipe, setRecipe] = useState<Recipe | null>(null); const [error, setError] = useState(""); useEffect(() => { const token = sessionStorage.getItem("crave_access_token"); fetch(`${apiUrl}/recipes/${recipeId}`, { headers: { Authorization: `Bearer ${token}` } }).then(async (response) => { if (!response.ok) throw new Error("Das Rezept konnte nicht geladen werden."); return response.json(); }).then(setRecipe).catch((caught) => setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht geladen werden.")); }, [recipeId]); if (error) return <main className="flex-1 bg-linen p-8 text-center text-red-800">{error}</main>; if (!recipe) return <main className="flex-1 bg-linen p-8 text-center text-bark">Rezept wird geladen…</main>; return <><FullView recipe={recipe} proposal={false} /><div className="mx-auto max-w-5xl px-5 pb-28 sm:px-8"><DeleteRecipeButton recipeId={recipeId} /><RecipeChat recipe={recipe} /></div></>; }
+export function SuggestionDetail() {
+    const [recipe, setRecipe] = useState<Recipe | null>(null);
+    const [isRestoring, setIsRestoring] = useState(true);
+    useEffect(() => { const restore = window.setTimeout(() => { const stored = sessionStorage.getItem("crave_selected_suggestion"); if (stored) setRecipe(JSON.parse(stored)); setIsRestoring(false); }, 0); return () => window.clearTimeout(restore); }, []);
+    if (isRestoring) return <RecipeSkeleton />;
+    if (!recipe) return <Notice action={<Link href="/" className="mt-4 inline-block text-sm font-semibold text-caramel hover:text-espresso">Neue Ideen finden</Link>}>Dieser Vorschlag ist nicht mehr verfügbar.</Notice>;
+    return <FullView recipe={recipe} proposal><RecipeChat recipe={recipe} /></FullView>;
+}
+
+function DeleteRecipeButton({ recipeId }: { recipeId: string }) {
+    const router = useRouter();
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [error, setError] = useState("");
+    async function remove() { if (!window.confirm("Dieses Rezept wirklich dauerhaft löschen?")) return; setError(""); setIsDeleting(true); try { const token = sessionStorage.getItem("crave_access_token"); const response = await fetch(`${apiUrl}/recipes/${recipeId}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }); if (!response.ok) { const result: { detail?: string } = await response.json().catch(() => ({})); throw new Error(result.detail ?? "Das Rezept konnte nicht gelöscht werden."); } router.replace("/recipes"); } catch (caught) { setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht gelöscht werden."); } finally { setIsDeleting(false); } }
+    return <div className="mt-16 flex flex-col items-center gap-2">
+        <button onClick={remove} disabled={isDeleting} className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium text-bark/70 transition hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 disabled:opacity-60">
+            <Trash2 size={15} strokeWidth={2} aria-hidden="true" />{isDeleting ? "Wird gelöscht…" : "Rezept löschen"}
+        </button>
+        {error && <p role="alert" className="text-sm font-medium text-red-700">{error}</p>}
+    </div>;
+}
+
+export function StoredRecipeDetail({ recipeId }: { recipeId: string }) {
+    const [recipe, setRecipe] = useState<Recipe | null>(null);
+    const [error, setError] = useState("");
+    useEffect(() => { const token = sessionStorage.getItem("crave_access_token"); fetch(`${apiUrl}/recipes/${recipeId}`, { headers: { Authorization: `Bearer ${token}` } }).then(async (response) => { if (!response.ok) throw new Error("Das Rezept konnte nicht geladen werden."); return response.json(); }).then(setRecipe).catch((caught) => setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht geladen werden.")); }, [recipeId]);
+    if (error) return <Notice action={<Link href="/recipes" className="mt-4 inline-block text-sm font-semibold text-caramel hover:text-espresso">Zu deinen Rezepten</Link>}><span className="text-red-800">{error}</span></Notice>;
+    if (!recipe) return <RecipeSkeleton />;
+    return <FullView recipe={recipe} proposal={false}><RecipeChat recipe={recipe} /><DeleteRecipeButton recipeId={recipeId} /></FullView>;
+}
