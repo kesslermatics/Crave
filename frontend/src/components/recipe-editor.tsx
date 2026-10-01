@@ -59,9 +59,19 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 	const [isImaging, setIsImaging] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
 	const [isLoadingRecipe, setIsLoadingRecipe] = useState(Boolean(editId));
+	const [importText, setImportText] = useState("");
+	const [isImporting, setIsImporting] = useState(false);
 	const [prefillValues, setPrefillValues] = useState<Record<string, unknown> | null>(null);
 	const saveAsDuplicateRef = useRef(false);
 	const [error, setError] = useState("");
+
+	function applyRecipe(recipe: Record<string, unknown>) {
+		setType(typeof recipe.recipe_type === "string" && recipe.recipe_type in categories ? recipe.recipe_type as RecipeType : "meal");
+		setDescription(String(recipe.description ?? "")); setImageData(String(recipe.image_data ?? ""));
+		setIngredients(Array.isArray(recipe.ingredients) && recipe.ingredients.length ? recipe.ingredients.map((ingredient) => { const item = ingredient as { name?: string; amount?: number; unit?: string }; return { name: item.name ?? "", amount: String(item.amount ?? ""), unit: item.unit ?? "g" }; }) : [{ name: "", amount: "", unit: "g" }]);
+		setSteps(Array.isArray(recipe.instructions) && recipe.instructions.length ? recipe.instructions.map(String) : [""]);
+		setPrefillValues({ ...recipe, ...(recipe.details as Record<string, unknown> ?? {}), tags: Array.isArray(recipe.tags) ? recipe.tags.join(", ") : "" });
+	}
 
 	useEffect(() => {
 		if (!editId) return;
@@ -69,13 +79,7 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 		const token = sessionStorage.getItem("crave_access_token");
 		fetch(`${apiUrl}/recipes/${editId}`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
 			.then(async (response) => { if (!response.ok) throw new Error("Das Rezept konnte nicht geladen werden."); return response.json(); })
-			.then((recipe) => {
-				setType(recipe.recipe_type in categories ? recipe.recipe_type : "meal");
-				setDescription(recipe.description ?? ""); setImageData(recipe.image_data ?? "");
-				setIngredients(recipe.ingredients?.map((ingredient: { name: string; amount: number; unit: string }) => ({ ...ingredient, amount: String(ingredient.amount) })) ?? [{ name: "", amount: "", unit: "g" }]);
-				setSteps(recipe.instructions?.length ? recipe.instructions : [""]);
-				setPrefillValues({ ...recipe, ...recipe.details, tags: recipe.tags?.join(", ") ?? "" });
-			})
+			.then((recipe) => applyRecipe(recipe))
 			.catch((caught) => { if ((caught as Error).name !== "AbortError") setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht geladen werden."); })
 			.finally(() => { if (!controller.signal.aborted) setIsLoadingRecipe(false); });
 		return () => controller.abort();
@@ -95,6 +99,18 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 	}, [isLoadingRecipe, prefillValues, type]);
 
 	function recipeIngredients() { return ingredients.filter((item) => item.name.trim()).map((item) => ({ name: item.name.trim(), amount: Number(item.amount || 0), unit: item.unit.trim() })); }
+	async function importRecipe() {
+		if (importText.trim().length < 20) { setError("Füge bitte einen vollständigen Rezepttext ein."); return; }
+		setError(""); setIsImporting(true);
+		try {
+			const token = sessionStorage.getItem("crave_access_token");
+			const response = await fetch(`${apiUrl}/ai/recipe-import`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ source_text: importText }) });
+			const result: { recipe?: Record<string, unknown>; detail?: string } = await response.json().catch(() => ({}));
+			if (!response.ok || !result.recipe) throw new Error(result.detail ?? "Der Rezepttext konnte nicht übernommen werden.");
+			applyRecipe(result.recipe); setImportText("");
+		} catch (caught) { setError(caught instanceof Error ? caught.message : "Der Rezepttext konnte nicht übernommen werden."); }
+		finally { setIsImporting(false); }
+	}
 	function recipeSteps() { return steps.map((step) => step.trim()).filter(Boolean); }
 	function updateIngredient(index: number, key: keyof Ingredient, itemValue: string) { setIngredients((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, [key]: itemValue } : item)); }
 	function removeIngredient(index: number) { setIngredients((items) => items.length === 1 ? [{ name: "", amount: "", unit: "g" }] : items.filter((_, itemIndex) => itemIndex !== index)); }
@@ -149,7 +165,7 @@ export function RecipeEditor({ initialType = "meal", recipeId }: { initialType?:
 	}
 
 	if (isLoadingRecipe) return <main className="flex-1 bg-linen p-8 text-center text-bark">Rezept wird geladen…</main>;
-	return <main className="flex-1 bg-linen px-5 py-8 pb-28 sm:px-8 sm:py-12"><form ref={formRef} onSubmit={submit} className="mx-auto max-w-5xl space-y-6"><Link href={editId ? `/recipes/${editId}` : "/recipes"} className="inline-flex text-sm font-bold text-caramel transition hover:text-espresso">← {editId ? "Zurück zum Rezept" : "Zurück zu Rezepten"}</Link><header className="pb-2"><p className="text-[11px] font-bold tracking-[0.18em] text-caramel">{editId ? "REZEPT BEARBEITEN" : "NEUES REZEPT"} · {icon} {label.toUpperCase()}</p><h1 className="mt-3 text-4xl font-semibold tracking-[-0.065em] text-espresso">{editId ? "Rezept bearbeiten" : "Rezept hinzufügen"}</h1></header>
+	return <main className="flex-1 bg-linen px-5 py-8 pb-28 sm:px-8 sm:py-12"><form ref={formRef} onSubmit={submit} className="mx-auto max-w-5xl space-y-6"><Link href={editId ? `/recipes/${editId}` : "/recipes"} className="inline-flex text-sm font-bold text-caramel transition hover:text-espresso">← {editId ? "Zurück zum Rezept" : "Zurück zu Rezepten"}</Link><header className="pb-2"><p className="text-[11px] font-bold tracking-[0.18em] text-caramel">{editId ? "REZEPT BEARBEITEN" : "NEUES REZEPT"} · {icon} {label.toUpperCase()}</p><h1 className="mt-3 text-4xl font-semibold tracking-[-0.065em] text-espresso">{editId ? "Rezept bearbeiten" : "Rezept hinzufügen"}</h1></header>{!editId && <Section title="Rezepttext übernehmen" hint="Kopiere ein Rezept von einer Webseite, aus einer Notiz oder aus einem Buch hier hinein. Crave füllt die Formularfelder und ergänzt fehlende Angaben."><textarea value={importText} onChange={(event) => setImportText(event.target.value)} placeholder="Titel, Zutaten, Mengen, Zubereitung und alle weiteren Angaben hier einfügen…" className={`${inputClass} min-h-44 resize-none`} aria-label="Rezepttext einfügen" /><button type="button" onClick={importRecipe} disabled={isImporting} className="mt-4 flex min-w-56 justify-center rounded-full bg-espresso px-5 py-3 text-sm font-bold text-white transition hover:bg-caramel disabled:opacity-60">{isImporting ? <LoadingIndicator label="Rezept wird übernommen…" light /> : "Text mit KI übernehmen"}</button></Section>}
 		<Section title="Grundlagen"><div className="grid gap-5 sm:grid-cols-2"><div className="sm:col-span-2"><Field name="title" label="Rezeptname" required placeholder="z. B. Cremige Zitronenpasta" /></div><div className="sm:col-span-2"><div className="flex items-end gap-3"><label className="block flex-1 text-sm font-semibold text-espresso">Beschreibung<textarea value={description} onChange={(event) => setDescription(event.target.value)} required placeholder="Was macht dieses Rezept besonders?" className={`${inputClass} min-h-28 resize-y`} /></label><button type="button" onClick={() => generate("description")} disabled={isWriting} className="mb-0 grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-saffron text-xl transition hover:bg-caramel hover:text-white disabled:opacity-60" aria-label="Beschreibung mit KI erstellen">✦</button></div></div><Field name="tags" label="Tags" placeholder="z. B. schnell, vegetarisch" /><Select name="difficulty" label="Schwierigkeit" defaultValue="easy" values={["easy", "medium", "hard"]} /><Field name="servings" label="Portionen" type="number" required defaultValue={2} /><Field name="total_time_minutes" label="Gesamtzeit in Minuten" type="number" required defaultValue={20} /><Check name="is_ai_generated" label="KI-generiert" /></div></Section>
 		<Section title="Zutaten" hint="Füge jede Zutat einzeln hinzu."><div className="space-y-3">{ingredients.map((ingredient, index) => <div key={index} className="grid gap-3 rounded-2xl border border-espresso/10 bg-white/45 p-3 sm:grid-cols-[minmax(0,1fr)_7rem_7rem_2.75rem]"><textarea value={ingredient.name} onChange={(event) => updateIngredient(index, "name", event.target.value)} required placeholder="Zutat" rows={1} className="min-h-11 resize-none rounded-xl border border-espresso/10 bg-white/80 px-3 py-2.5 text-sm outline-none focus:border-caramel" /><input value={ingredient.amount} onChange={(event) => updateIngredient(index, "amount", event.target.value)} required type="number" min="0" step="0.1" placeholder="Menge" className="rounded-xl border border-espresso/10 bg-white/80 px-3 py-2.5 text-sm outline-none focus:border-caramel" /><input value={ingredient.unit} onChange={(event) => updateIngredient(index, "unit", event.target.value)} required placeholder="Einheit" className="rounded-xl border border-espresso/10 bg-white/80 px-3 py-2.5 text-sm outline-none focus:border-caramel" /><button type="button" onClick={() => removeIngredient(index)} className="grid h-10 w-10 place-items-center rounded-xl border border-espresso/10 text-lg text-bark transition hover:border-red-200 hover:bg-red-50 hover:text-red-700" aria-label={`Zutat ${index + 1} entfernen`}>−</button></div>)}</div><button type="button" onClick={() => setIngredients((items) => [...items, { name: "", amount: "", unit: "g" }])} className="mt-4 rounded-full border border-caramel px-4 py-2 text-sm font-bold text-caramel transition hover:bg-caramel hover:text-white">+ Zutat hinzufügen</button></Section>
 		<Section title="Zubereitung" hint="Ein Schritt pro Eintrag – klar und gut lesbar."><div className="space-y-3">{steps.map((step, index) => <div key={index} className="flex gap-3 rounded-2xl border border-espresso/10 bg-white/45 p-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-saffron/35 text-sm font-bold text-espresso">{index + 1}</span><textarea value={step} onChange={(event) => updateStep(index, event.target.value)} required placeholder={`Schritt ${index + 1} beschreiben`} rows={1} className="min-h-11 min-w-0 flex-1 resize-none rounded-xl border border-espresso/10 bg-white/80 px-3 py-2.5 text-sm outline-none focus:border-caramel" /><button type="button" onClick={() => removeStep(index)} className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-espresso/10 text-lg text-bark transition hover:border-red-200 hover:bg-red-50 hover:text-red-700" aria-label={`Schritt ${index + 1} entfernen`}>−</button></div>)}</div><button type="button" onClick={() => setSteps((items) => [...items, ""])} className="mt-4 rounded-full border border-caramel px-4 py-2 text-sm font-bold text-caramel transition hover:bg-caramel hover:text-white">+ Schritt hinzufügen</button></Section>

@@ -192,9 +192,41 @@ class RecipeDraftResponse(RecipeChatResponse):
     recipe: RecipeCreate
 
 
+class RecipeImportRequest(BaseModel):
+    source_text: str = Field(min_length=20, max_length=30_000)
+
+
+class RecipeImportResponse(BaseModel):
+    recipe: RecipeCreate
+
+
 def recipe_context(context: RecipeAiContext) -> str:
     """Serialize recipe data as data, not instructions, for the model prompt."""
     return json.dumps(context.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
+
+
+@router.post("/recipe-import", response_model=RecipeImportResponse)
+async def import_recipe(source: RecipeImportRequest, _: User = Depends(get_current_user)) -> RecipeImportResponse:
+    """Convert copied recipe text into a complete, editable Crave recipe."""
+    prompt = f"""Du übernimmst ein Rezept aus kopiertem Text für die deutsche Koch-App Crave.
+Extrahiere alle vorhandenen Informationen und vervollständige fehlende Angaben plausibel. Antworte ausschließlich mit einem validen JSON-Objekt mit dem Schlüssel "recipe". Das recipe-Feld muss ein vollständiges RecipeCreate-Objekt sein, einschließlich title, description, recipe_type, image_data (immer null), servings, total_time_minutes, difficulty, calories, protein_g, carbs_g, fat_g, ingredients, instructions, details, is_ai_generated und tags.
+Wähle den recipe_type passend: baking für Backwaren, drink für Getränke, basic für Saucen, Dips, Dressings, Teige und ähnliche Grundlagen, sonst meal. Verwende für den gewählten Typ ausschließlich dessen gültige Details. Setze is_ai_generated auf true. Bewahre konkrete Mengen, Zutaten und Schritte aus dem Quelltext; ergänze nur fehlende Werte sorgfältig und plausibel. Schreibe alle Texte auf Deutsch. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
+Quelltext:
+{source.source_text}"""
+    try:
+        response = await client().responses.create(
+            model=DESCRIPTION_MODEL,
+            input=prompt,
+            text={"format": {"type": "json_object"}},
+            max_output_tokens=8_000,
+        )
+        return RecipeImportResponse.model_validate(json.loads(response.output_text))
+    except ValidationError as error:
+        logger.warning("Imported recipe violated the schema: %s", error.errors())
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Der kopierte Rezepttext konnte nicht vollständig übernommen werden.") from None
+    except (OpenAIError, json.JSONDecodeError, ValueError):
+        logger.exception("Recipe import failed")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Der Rezeptimport ist momentan nicht verfügbar.") from None
 
 
 def client() -> AsyncOpenAI:
