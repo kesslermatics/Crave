@@ -149,7 +149,11 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 			const response = await fetch(`${apiUrl}/ai/recipe-import`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ ...source, recipe_type: isTypeChosen ? type : null }) });
 			const result: { recipe?: Record<string, unknown>; detail?: unknown; warnings?: string[] } = await response.json().catch(() => ({}));
 			setImportNotice(Array.isArray(result.warnings) ? result.warnings.join(" ") : "");
-			if (!response.ok || !result.recipe) throw new Error(typeof result.detail === "string" ? result.detail : importUrl ? "Das Rezept unter diesem Link konnte nicht übernommen werden." : "Der Rezepttext konnte nicht übernommen werden.");
+			if (!response.ok || !result.recipe) {
+				const detail = result.detail;
+				const message = typeof detail === "string" ? detail : Array.isArray(detail) ? (detail as { msg?: string }[]).map((e) => e.msg?.replace(/^Value error, /, "") ?? "").join(" ").trim() || (importUrl ? "Das Rezept unter diesem Link konnte nicht übernommen werden." : "Der Rezepttext konnte nicht übernommen werden.") : importUrl ? "Das Rezept unter diesem Link konnte nicht übernommen werden." : "Der Rezepttext konnte nicht übernommen werden.";
+				throw new Error(message);
+			}
 			applyRecipe(result.recipe); setImportText("");
 		} catch (caught) { setError(caught instanceof Error ? caught.message : "Der Rezepttext konnte nicht übernommen werden."); }
 		finally { setIsImporting(false); }
