@@ -10,8 +10,16 @@ const sora = Sora({
 export const metadata: Metadata = {
   title: "Crave — Kulinarische Intelligenz",
   description: "KI-gestützte Rezeptideen für jeden Appetit.",
+  applicationName: "Crave",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Crave",
+  },
   icons: {
     icon: "/icon.svg",
+    apple: "/apple-icon",
   },
 };
 
