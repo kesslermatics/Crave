@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { ArrowLeft, CakeSlice, ChevronDown, CookingPot, Copy, CupSoda, ImagePlus, Plus, Soup, Sparkles, X } from "lucide-react";
+import { ArrowLeft, CakeSlice, ChevronDown, CookingPot, Copy, CupSoda, ImagePlus, Info, Link2, Plus, Soup, Sparkles, X } from "lucide-react";
 
 import { apiUrl } from "@/lib/api";
 import { recipeListHref } from "@/lib/recipe-filter";
@@ -45,8 +45,8 @@ function Field({ name, label, type = "text", required = false, defaultValue, ste
 	return <label className={labelClass}>{label}{suffix ? <span className="relative mt-1.5 block">{input}<span className="pointer-events-none absolute inset-y-0 right-3.5 flex items-center text-sm text-bark/55">{suffix}</span></span> : input}</label>;
 }
 
-function Select({ name, label, values, defaultValue }: { name: string; label: string; values: string[]; defaultValue?: string }) {
-	return <label className={labelClass}>{label}<span className="relative mt-1.5 block"><select name={name} defaultValue={defaultValue} className={`${fieldBase} cursor-pointer appearance-none pr-10`}>{values.map((item) => <option key={item} value={item}>{enumLabels[item] ?? item}</option>)}</select><ChevronDown size={16} strokeWidth={2} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-bark/60" aria-hidden="true" /></span></label>;
+function Select({ name, label, values, defaultValue, labels = enumLabels }: { name: string; label: string; values: string[]; defaultValue?: string; labels?: Record<string, string> }) {
+	return <label className={labelClass}>{label}<span className="relative mt-1.5 block"><select name={name} defaultValue={defaultValue} className={`${fieldBase} cursor-pointer appearance-none pr-10`}>{values.map((item) => <option key={item} value={item}>{labels[item] ?? item}</option>)}</select><ChevronDown size={16} strokeWidth={2} className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-bark/60" aria-hidden="true" /></span></label>;
 }
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
@@ -94,6 +94,9 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 	const [isSaving, setIsSaving] = useState(false);
 	const [isLoadingRecipe, setIsLoadingRecipe] = useState(Boolean(editId));
 	const [importText, setImportText] = useState("");
+	const [importNotice, setImportNotice] = useState("");
+	// Steht nur ein Link im Importfeld, wird die Seite ausgelesen statt Text übernommen.
+	const importUrl = /^https?:\/\/\S+$/i.test(importText.trim()) ? importText.trim() : null;
 	const [isImporting, setIsImporting] = useState(false);
 	const [prefillValues, setPrefillValues] = useState<Record<string, unknown> | null>(null);
 	// True when the user deliberately picked a category (via "+" in a category or the selector below).
@@ -137,13 +140,16 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 
 	function recipeIngredients() { return ingredients.filter((item) => item.name.trim()).map((item) => ({ name: item.name.trim(), amount: Number(item.amount || 0), unit: item.unit.trim() })); }
 	async function importRecipe() {
-		if (importText.trim().length < 20) { setError("Füge bitte einen vollständigen Rezepttext ein."); return; }
+		if (!importUrl && importText.trim().length < 20) { setError("Füge bitte einen vollständigen Rezepttext oder einen Link ein."); return; }
 		setError(""); setIsImporting(true);
 		try {
 			const token = sessionStorage.getItem("crave_access_token");
-			const response = await fetch(`${apiUrl}/ai/recipe-import`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ source_text: importText, recipe_type: isTypeChosen ? type : null }) });
-			const result: { recipe?: Record<string, unknown>; detail?: string } = await response.json().catch(() => ({}));
-			if (!response.ok || !result.recipe) throw new Error(result.detail ?? "Der Rezepttext konnte nicht übernommen werden.");
+			// Nur ein Link im Feld → das Backend liest die Seite aus; sonst wird der Text übernommen.
+			const source = importUrl ? { source_url: importUrl } : { source_text: importText };
+			const response = await fetch(`${apiUrl}/ai/recipe-import`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ ...source, recipe_type: isTypeChosen ? type : null }) });
+			const result: { recipe?: Record<string, unknown>; detail?: unknown; warnings?: string[] } = await response.json().catch(() => ({}));
+			setImportNotice(Array.isArray(result.warnings) ? result.warnings.join(" ") : "");
+			if (!response.ok || !result.recipe) throw new Error(typeof result.detail === "string" ? result.detail : importUrl ? "Das Rezept unter diesem Link konnte nicht übernommen werden." : "Der Rezepttext konnte nicht übernommen werden.");
 			applyRecipe(result.recipe); setImportText("");
 		} catch (caught) { setError(caught instanceof Error ? caught.message : "Der Rezepttext konnte nicht übernommen werden."); }
 		finally { setIsImporting(false); }
@@ -189,7 +195,7 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 		if (!recipeIngredients().length || !recipeSteps().length) { setError("Bitte füge mindestens eine Zutat und einen Zubereitungsschritt hinzu."); return; }
 		setError(""); setIsSaving(true);
 		const form = new FormData(event.currentTarget);
-		const payload = { ...buildContext(), description, image_data: imageData || null, servings: number(form, "servings"), difficulty: value(form, "difficulty"), is_ai_generated: form.get("is_ai_generated") === "on" };
+		const payload = { ...buildContext(), description, image_data: imageData || null, servings: number(form, "servings"), difficulty: value(form, "difficulty"), is_ai_generated: form.get("is_ai_generated") === "on", appliance: value(form, "appliance") || "none" };
 		try {
 			const token = sessionStorage.getItem("crave_access_token");
 			const shouldOverwrite = Boolean(editId) && !saveAsDuplicateRef.current;
@@ -209,7 +215,7 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 			<header className="mt-8 pb-10 sm:mt-12">
 				<p className="inline-flex items-center gap-2 text-[11px] font-semibold tracking-[0.2em] text-caramel">{editId ? "BEARBEITEN" : "NEUES REZEPT"}<span className="h-1 w-1 rounded-full bg-caramel/40" aria-hidden="true" /><span className="inline-flex items-center gap-1">{icon}{label.toUpperCase()}</span></p>
 				<h1 className="mt-3 text-[2.5rem] leading-[1.05] font-semibold tracking-[-0.05em] text-espresso sm:text-5xl">{editId ? "Rezept bearbeiten" : "Rezept hinzufügen"}</h1>
-				<p className="mt-3 max-w-xl text-sm leading-6 text-bark">{editId ? "Passe Angaben an und speichere sie, oder lege eine Kopie als neue Variante an." : "Fülle die Felder aus oder lass Crave einen vorhandenen Rezepttext übernehmen."}</p>
+				<p className="mt-3 max-w-xl text-sm leading-6 text-bark">{editId ? "Passe Angaben an und speichere sie, oder lege eine Kopie als neue Variante an." : "Fülle die Felder aus oder lass Crave einen Rezepttext oder Link übernehmen."}</p>
 			</header>
 
 			<Section title="Kategorie" hint="Bestimmt, wo das Rezept in deinem Kochbuch landet.">
@@ -226,9 +232,11 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 				</fieldset>
 			</Section>
 
-			{!editId && <Section title="Text übernehmen" hint="Rezept von einer Webseite, Notiz oder aus einem Buch einfügen. Crave füllt das Formular aus.">
-				<textarea value={importText} onChange={(event) => setImportText(event.target.value)} placeholder="Titel, Zutaten, Mengen, Zubereitung…" className={`${fieldBase} min-h-36 resize-none leading-6`} aria-label="Rezepttext einfügen" />
-				<button type="button" onClick={importRecipe} disabled={isImporting} className={`${darkButton} mt-3 min-w-52`}>{isImporting ? <LoadingIndicator label="Wird übernommen…" light /> : <><Sparkles size={15} strokeWidth={2.25} aria-hidden="true" />Mit KI übernehmen</>}</button>
+			{!editId && <Section title="Text oder Link übernehmen" hint="Rezepttext einfügen oder einen geteilten Link, z. B. aus Cookidoo, Monsieur Cuisine oder von einer Rezeptseite. Crave füllt das Formular aus.">
+				<textarea value={importText} onChange={(event) => setImportText(event.target.value)} placeholder="https://… oder Titel, Zutaten, Mengen, Zubereitung…" className={`${fieldBase} min-h-36 resize-none leading-6`} aria-label="Rezepttext oder Link einfügen" />
+				{importUrl && <p className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full bg-cream/80 px-3 py-1 text-xs font-medium text-espresso motion-safe:animate-fade-in"><Link2 size={13} strokeWidth={2.25} className="shrink-0 text-caramel" aria-hidden="true" /><span className="truncate">Link erkannt – Crave liest die Seite aus</span></p>}
+				<button type="button" onClick={importRecipe} disabled={isImporting} className={`${darkButton} mt-3 min-w-52`}>{isImporting ? <LoadingIndicator label={importUrl ? "Seite wird gelesen…" : "Wird übernommen…"} light /> : <><Sparkles size={15} strokeWidth={2.25} aria-hidden="true" />{importUrl ? "Link übernehmen" : "Mit KI übernehmen"}</>}</button>
+				{importNotice && <p role="status" className="mt-3 flex gap-2 rounded-2xl bg-saffron/20 px-4 py-3 text-sm leading-6 text-espresso motion-safe:animate-fade-in"><Info size={16} strokeWidth={2.25} className="mt-1 shrink-0 text-caramel" aria-hidden="true" />{importNotice}</p>}
 			</Section>}
 
 			<Section title="Grundlagen">
@@ -245,6 +253,7 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 					<Select name="difficulty" label="Schwierigkeit" defaultValue="easy" values={["easy", "medium", "hard"]} />
 					<Field name="servings" label="Portionen" type="number" required defaultValue={2} />
 					<Field name="total_time_minutes" label="Gesamtzeit" type="number" required defaultValue={20} suffix="Min" />
+					<Select name="appliance" label="Küchenmaschine" defaultValue="none" values={["none", "thermomix", "monsieur_cuisine"]} labels={{ none: "Keine – klassisch gekocht", thermomix: "Thermomix", monsieur_cuisine: "Monsieur Cuisine" }} />
 					<Check name="is_ai_generated" label="KI-generiert" />
 				</div>
 			</Section>

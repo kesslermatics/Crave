@@ -6,12 +6,13 @@ import { ArrowLeft, BookmarkPlus, Clock3, Flame, Gauge, Minus, Pencil, Plus, Rot
 import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 
+import { ApplianceBadge } from "@/components/appliance-badge";
 import { LoadingIndicator } from "@/components/loading-indicator";
 import { RecipeChat } from "@/components/recipe-chat";
 import { Toast, toastActionClass, useToast } from "@/components/toast";
 import { formatQuantity } from "@/lib/amount";
 import { apiUrl } from "@/lib/api";
-import { addShoppingItems, guessSection, parseShoppingInput, shareText, shoppingListText, type ShoppingDraft } from "@/lib/shopping-list";
+import { addShoppingItems, guessSection, parseShoppingInput, shareText, shoppingListText, syncShoppingList, type ShoppingDraft } from "@/lib/shopping-list";
 import { formatDuration } from "@/lib/duration";
 import { recipeListHref } from "@/lib/recipe-filter";
 
@@ -21,7 +22,7 @@ type Recipe = {
     servings: number; total_time_minutes: number; difficulty: string;
     calories: number; protein_g: number; carbs_g: number; fat_g: number;
     ingredients: Ingredient[]; instructions: string[]; details: Record<string, unknown>;
-    tags: string[]; recipe_type: string; is_ai_generated: boolean;
+    tags: string[]; recipe_type: string; is_ai_generated: boolean; appliance?: string;
 };
 
 const labels: Record<string, string> = {
@@ -58,7 +59,10 @@ function RecipeHero({ recipe, proposal, servings }: { recipe: Recipe; proposal: 
         { icon: Flame, label: "Pro Portion", value: `${recipe.calories} kcal` },
     ];
     return <header className="mt-8 sm:mt-12">
-        <p className="text-[11px] font-semibold tracking-[0.2em] text-caramel">{proposal ? "DEIN VORSCHLAG" : "DEIN REZEPT"}</p>
+        <div className="flex flex-wrap items-center gap-3">
+            <p className="text-[11px] font-semibold tracking-[0.2em] text-caramel">{proposal ? "DEIN VORSCHLAG" : "DEIN REZEPT"}</p>
+            <ApplianceBadge appliance={recipe.appliance} />
+        </div>
         <h1 className="mt-3 max-w-3xl text-[2.5rem] leading-[1.05] font-semibold tracking-[-0.05em] text-balance text-espresso sm:text-6xl">{recipe.title}</h1>
         {recipe.description && <p className="mt-5 max-w-2xl text-base leading-7 text-pretty text-bark sm:text-lg sm:leading-8">{recipe.description}</p>}
 
@@ -195,7 +199,8 @@ function FullView({ recipe, proposal, children }: { recipe: Recipe; proposal: bo
         let drafts: ShoppingDraft[];
         try {
             // KI vereinheitlicht Namen („Zwiebel, gewürfelt“ → „Zwiebeln“) und ordnet Abteilungen zu.
-            drafts = await parseShoppingInput({ ingredients });
+            // Parallel den aktuellen Listenstand holen, damit gleiche Zutaten mit bestehenden Einträgen zusammengefasst werden.
+            [drafts] = await Promise.all([parseShoppingInput({ ingredients }), syncShoppingList().catch(() => undefined)]);
         } catch {
             offline = true;
             drafts = ingredients;

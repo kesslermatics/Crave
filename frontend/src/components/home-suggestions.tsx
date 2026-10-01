@@ -5,12 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ArrowUpRight, CakeSlice, Camera, ChevronDown, Clock3, CookingPot, CupSoda, Flame, History, LucideIcon, Plus, RotateCcw, Soup, X } from "lucide-react";
 
+import { ApplianceBadge } from "@/components/appliance-badge";
 import { LoadingIndicator } from "@/components/loading-indicator";
 import { SuggestionComposer } from "@/components/suggestion-composer";
 import { apiUrl } from "@/lib/api";
 import { formatDuration } from "@/lib/duration";
 
-type Suggestion = { title: string; description: string; recipe_type: string; total_time_minutes: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; tags: string[]; servings: number; difficulty: string; ingredients: { name: string; amount: number; unit: string }[]; instructions: string[]; details: Record<string, unknown>; is_ai_generated: boolean; image_data: string | null };
+type Suggestion = { title: string; description: string; recipe_type: string; total_time_minutes: number; calories: number; protein_g: number; carbs_g: number; fat_g: number; tags: string[]; servings: number; difficulty: string; ingredients: { name: string; amount: number; unit: string }[]; instructions: string[]; details: Record<string, unknown>; is_ai_generated: boolean; image_data: string | null; appliance?: string };
 type Iteration = { prompt: string; recipes: Suggestion[]; detected_ingredients?: string[]; photo_count?: number };
 type SearchHistory = { id: string; title: string; created_at: string; updated_at: string; iteration_count: number };
 type SearchHistoryDetail = SearchHistory & { iterations: Iteration[] };
@@ -37,7 +38,10 @@ function SuggestionCard({ recipe, onOpen }: { recipe: Suggestion; onOpen: () => 
     const Icon = type.icon;
     return <button type="button" onClick={onOpen} className="group flex h-full animate-page-in flex-col rounded-2xl bg-white p-5 text-left shadow-[0_1px_2px_rgba(66,52,33,0.04)] ring-1 ring-espresso/[0.08] transition duration-300 hover:-translate-y-0.5 hover:shadow-[0_18px_36px_-16px_rgba(66,52,33,0.3)] hover:ring-caramel/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/50">
         <div className="flex items-center justify-between gap-3">
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-caramel"><Icon size={13} strokeWidth={2.25} aria-hidden="true" />{type.label}</span>
+            <span className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-caramel"><Icon size={13} strokeWidth={2.25} aria-hidden="true" />{type.label}</span>
+                <ApplianceBadge appliance={recipe.appliance} size="sm" />
+            </span>
             <span className="grid h-8 w-8 place-items-center rounded-full bg-linen text-bark transition group-hover:bg-caramel group-hover:text-white" aria-hidden="true"><ArrowUpRight size={15} strokeWidth={2.25} /></span>
         </div>
         <h3 className="mt-3 text-lg leading-snug font-semibold tracking-[-0.03em] text-balance text-espresso">{recipe.title}</h3>

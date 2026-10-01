@@ -7,6 +7,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.recipe_enums import (
+    Appliance,
     CaffeineLevel,
     Difficulty,
     DrinkPreparationMethod,
@@ -107,6 +108,7 @@ class RecipeCreate(BaseModel):
     details: dict[str, Any]
     is_ai_generated: bool = False
     tags: list[str] = Field(default_factory=list, max_length=30)
+    appliance: Appliance = Appliance.NONE
 
     @model_validator(mode="after")
     def validate_details_for_recipe_type(self):
@@ -143,6 +145,7 @@ class RecipeSummary(BaseModel):
     carbs_g: float
     fat_g: float
     tags: list[str]
+    appliance: Appliance = Appliance.NONE
 
 
 class RecipeRead(RecipeSummary):

@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowUp, Beef, Check, Croissant, CupSoda, LucideIcon, Milk, Package, Carrot, Share2, ShoppingBasket, Snowflake, Sparkles, Trash2, Wheat, WifiOff } from "lucide-react";
+import { ArrowUp, Beef, Carrot, Check, Cloud, CloudOff, Croissant, CupSoda, LucideIcon, Milk, Package, RefreshCw, Share2, ShoppingBasket, Snowflake, Sparkles, Trash2, Wheat, WifiOff } from "lucide-react";
 
 import { LoadingIndicator } from "@/components/loading-indicator";
 import { Toast, toastActionClass, useToast } from "@/components/toast";
 import {
     addShoppingItems, displayQuantity, parseShoppingInput, parseShoppingTextLocally, removeShoppingItem, replaceShoppingList, restoreShoppingItem,
-    sectionLabels, sectionOrder, shareText, shoppingListText, useShoppingList, type ShoppingDraft, type ShoppingItem, type ShoppingSection,
+    sectionLabels, sectionOrder, shareText, shoppingListText, startShoppingSync, useShoppingList, useShoppingSyncStatus, type ShoppingDraft, type ShoppingItem, type ShoppingSection,
 } from "@/lib/shopping-list";
 
 const sectionIcons: Record<ShoppingSection, LucideIcon> = {
@@ -35,7 +35,11 @@ export function ShoppingList() {
     const pendingRemovals = useRef(new Map<string, symbol>());
     const { toast, show: showToast, hide: hideToast } = useToast(5000);
 
+    const syncStatus = useShoppingSyncStatus();
+
     useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
+    // Abgleich mit der Datenbank: beim Öffnen, bei Fokus und wenn das Netz zurückkommt.
+    useEffect(() => startShoppingSync(), []);
     const later = (callback: () => void, ms: number) => { timers.current.push(window.setTimeout(callback, ms)); };
 
     const openCount = items.filter((item) => !leaving.has(item.id)).length;
@@ -119,7 +123,13 @@ export function ShoppingList() {
                 <div>
                     <p className="text-[11px] font-semibold tracking-[0.2em] text-caramel">EINKAUFEN</p>
                     <h1 className="mt-2 text-[2.5rem] leading-none font-semibold tracking-[-0.05em] text-espresso sm:text-5xl">Einkaufsliste</h1>
-                    <p className="mt-3 text-sm text-bark" aria-live="polite">{openCount ? `${openCount} ${openCount === 1 ? "Eintrag" : "Einträge"} offen` : "Alles erledigt"}</p>
+                    <p className="mt-3 inline-flex items-center gap-2 text-sm text-bark" aria-live="polite">
+                        {openCount ? `${openCount} ${openCount === 1 ? "Eintrag" : "Einträge"} offen` : "Alles erledigt"}
+                        {/* Dezenter Speicherstatus; die Liste selbst reagiert immer sofort. */}
+                        <span className="inline-flex items-center gap-1 text-xs text-bark/60">
+                            {syncStatus === "syncing" ? <><RefreshCw size={12} strokeWidth={2.25} className="motion-safe:animate-spin" aria-hidden="true" />Speichert…</> : syncStatus === "idle" ? <><Cloud size={12} strokeWidth={2.25} aria-hidden="true" />Gespeichert</> : null}
+                        </span>
+                    </p>
                 </div>
                 {items.length > 0 && <div className="-mr-2 flex gap-1">
                     <button type="button" onClick={share} className={iconButton} aria-label="Liste teilen oder exportieren" title="Teilen"><Share2 size={18} strokeWidth={2} aria-hidden="true" /></button>
@@ -127,7 +137,9 @@ export function ShoppingList() {
                 </div>}
             </header>
 
-            {!isOnline && <p className="mt-5 inline-flex items-center gap-2 rounded-full bg-cream/80 px-3.5 py-1.5 text-xs font-medium text-bark"><WifiOff size={14} strokeWidth={2.25} aria-hidden="true" />Offline – Abhaken funktioniert trotzdem.</p>}
+            {!isOnline || syncStatus === "offline"
+                ? <p className="mt-5 inline-flex items-center gap-2 rounded-full bg-cream/80 px-3.5 py-1.5 text-xs font-medium text-bark"><WifiOff size={14} strokeWidth={2.25} aria-hidden="true" />Offline – Änderungen werden gespeichert, sobald du wieder online bist.</p>
+                : syncStatus === "error" && <p className="mt-5 inline-flex items-center gap-2 rounded-full bg-red-50 px-3.5 py-1.5 text-xs font-medium text-red-800"><CloudOff size={14} strokeWidth={2.25} aria-hidden="true" />Synchronisieren gerade nicht möglich – deine Liste bleibt auf diesem Gerät erhalten.</p>}
 
             <form onSubmit={submit} className="mt-7 flex items-center gap-2 rounded-full bg-white py-1.5 pr-1.5 pl-4 shadow-[0_1px_2px_rgba(66,52,33,0.05),0_16px_36px_-22px_rgba(66,52,33,0.35)] ring-1 ring-espresso/[0.08] transition focus-within:ring-2 focus-within:ring-caramel/40">
                 <Sparkles size={17} strokeWidth={2} className="shrink-0 text-caramel" aria-hidden="true" />
@@ -139,7 +151,7 @@ export function ShoppingList() {
             </form>
             <p className="mt-2.5 px-4 text-xs text-bark/75">Schreib einfach drauflos – Crave erkennt Mengen und sortiert alles in die passende Abteilung.</p>
 
-            {sections.length === 0 ? <div className="mt-20 text-center motion-safe:animate-page-in">
+            {sections.length === 0 && syncStatus === "syncing" ? <div className="mt-16 flex justify-center text-sm"><LoadingIndicator label="Liste wird geladen…" /></div> : sections.length === 0 ? <div className="mt-20 text-center motion-safe:animate-page-in">
                 <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-cream text-caramel"><ShoppingBasket size={26} strokeWidth={1.75} aria-hidden="true" /></span>
                 <h2 className="mt-5 text-xl font-semibold tracking-[-0.03em] text-espresso">Deine Liste ist leer</h2>
                 <p className="mx-auto mt-2 max-w-xs text-sm leading-6 text-bark">Füge Zutaten direkt aus einem Rezept hinzu oder schreib oben, was du brauchst.</p>

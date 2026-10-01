@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.auth import get_current_user
 from app.db import get_session
 from app.models import Recipe, Tag, User
-from app.recipe_enums import RecipeType
+from app.recipe_enums import Appliance, RecipeType
 from app.recipe_schemas import RecipeCreate, RecipeRead, RecipeSummary
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
@@ -38,6 +38,7 @@ def serialise_recipe(recipe: Recipe) -> RecipeRead:
         details=recipe.details,
         is_ai_generated=recipe.is_ai_generated,
         tags=[tag.name for tag in recipe.tags],
+        appliance=recipe.appliance if recipe.appliance in Appliance._value2member_map_ else Appliance.NONE,
         created_at=recipe.created_at,
     )
 
@@ -101,6 +102,7 @@ async def create_recipe(
         instructions=payload.instructions,
         details=payload.details,
         is_ai_generated=payload.is_ai_generated,
+        appliance=payload.appliance.value,
         tags=await resolve_tags(session, payload.tags),
     )
     session.add(recipe)
@@ -175,6 +177,7 @@ async def update_recipe(
     recipe.instructions = payload.instructions
     recipe.details = payload.details
     recipe.is_ai_generated = payload.is_ai_generated
+    recipe.appliance = payload.appliance.value
     recipe.tags = await resolve_tags(session, payload.tags)
     await session.commit()
     await session.refresh(recipe, attribute_names=["tags"])

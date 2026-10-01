@@ -34,7 +34,7 @@ export function Hero() {
             <div className="relative mx-auto w-full max-w-md lg:max-w-none">
                 <div className="absolute -inset-4 -z-10 rounded-[3rem] bg-saffron/25 blur-3xl" aria-hidden />
                 <article className="overflow-hidden rounded-[2rem] border border-espresso/8 bg-white shadow-[0_24px_60px_rgba(66,52,33,0.14)]">
-                    <div className="flex h-64 items-end justify-between bg-[linear-gradient(135deg,#D7C56D_0%,#996130_52%,#423421_100%)] p-5 sm:h-80">
+                    <div className="flex h-64 items-end justify-between bg-[linear-gradient(135deg,#F0B429_0%,#996130_52%,#423421_100%)] p-5 sm:h-80">
                         <span className="rounded-full bg-white/90 px-3 py-1.5 text-[10px] font-bold">18 MIN · HIGH PROTEIN</span>
                         <span className="grid h-12 w-12 place-items-center rounded-full bg-white text-xl shadow-lg">→</span>
                     </div>

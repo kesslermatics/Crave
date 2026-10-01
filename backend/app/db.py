@@ -39,3 +39,5 @@ async def initialize_database() -> None:
         from sqlalchemy import text
 
         await connection.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS image_data TEXT"))
+        # Kitchen-machine flag (Thermomix / Monsieur Cuisine); existing recipes default to "none".
+        await connection.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS appliance VARCHAR(20) NOT NULL DEFAULT 'none'"))

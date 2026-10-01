@@ -1,6 +1,11 @@
 """Stable vocabulary used by recipe records and API payloads."""
 
 from enum import StrEnum
+from typing import Literal, get_args
+
+# Supermarket sections for shopping list entries (shared by AI parsing and persistence).
+ShoppingSection = Literal["produce", "chilled", "meat_fish", "bakery", "pantry", "frozen", "drinks", "other"]
+SHOPPING_SECTIONS: tuple[str, ...] = get_args(ShoppingSection)
 
 
 class RecipeType(StrEnum):
@@ -9,6 +14,14 @@ class RecipeType(StrEnum):
     DRINK = "drink"
     BASIC = "basic"
     PRESERVING = "preserving"
+
+
+class Appliance(StrEnum):
+    """Kitchen machine a recipe is written for (steps then contain machine settings like "10 Sek./Stufe 5")."""
+
+    NONE = "none"
+    THERMOMIX = "thermomix"
+    MONSIEUR_CUISINE = "monsieur_cuisine"
 
 
 class Difficulty(StrEnum):

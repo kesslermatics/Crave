@@ -13,6 +13,7 @@ from app.ai import router as ai_router
 from app.config import get_settings
 from app.db import get_engine, initialize_database
 from app.recipes import router as recipes_router
+from app.shopping import router as shopping_router
 
 settings = get_settings()
 PRODUCTION_FRONTEND_ORIGIN = "https://crave-frontend-production.up.railway.app"
@@ -63,6 +64,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(ai_router)
 app.include_router(recipes_router)
+app.include_router(shopping_router)
 
 
 @app.middleware("http")
