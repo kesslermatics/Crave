@@ -8,7 +8,9 @@ import { ArrowLeft, CakeSlice, ChevronDown, CookingPot, Copy, CupSoda, ImagePlus
 
 import { apiUrl } from "@/lib/api";
 import { recipeListHref } from "@/lib/recipe-filter";
+import { RecipeDraft } from "@/lib/recipe-diff";
 import { LoadingIndicator } from "@/components/loading-indicator";
+import { RecipeEditChat } from "@/components/recipe-edit-chat";
 
 const categories = {
 	meal: { label: "Mahlzeit", icon: <Soup size={13} strokeWidth={2.25} aria-hidden="true" /> },
@@ -221,6 +223,12 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 		return { title: value(form, "title"), recipe_type: type, ingredients: recipeIngredients(), instructions: recipeSteps(), total_time_minutes: number(form, "total_time_minutes"), calories: number(form, "calories"), protein_g: number(form, "protein_g"), carbs_g: number(form, "carbs_g"), fat_g: number(form, "fat_g"), details: details(form), tags: split(form.get("tags")) };
 	}
 
+	// Full snapshot of the live editor state for the AI edit chat (context + fields read from the form).
+	function currentRecipe(): RecipeDraft {
+		const form = new FormData(formRef.current!);
+		return { ...buildContext(), description, image_data: imageData || null, servings: number(form, "servings"), difficulty: value(form, "difficulty"), is_ai_generated: Boolean(prefillValues?.is_ai_generated), appliance: value(form, "appliance") || "none" };
+	}
+
 	async function generate(kind: "description" | "image") {
 		const context = buildContext();
 		if (!context.title) { setError("Bitte gib zuerst einen Rezeptnamen ein."); return; }
@@ -354,6 +362,7 @@ export function RecipeEditor({ initialType, recipeId }: { initialType?: string; 
 				</div>
 			</div>
 		</form>
+		{editId && <div className="mx-auto max-w-4xl px-5 sm:px-8"><RecipeEditChat buildRecipe={currentRecipe} onApply={applyRecipe} /></div>}
 	</main>;
 }
 

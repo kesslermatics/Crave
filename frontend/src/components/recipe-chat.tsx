@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { ArrowUp, Sparkles } from "lucide-react";
 
 import { apiUrl } from "@/lib/api";
+import { FormattedMessage } from "@/components/formatted-message";
 import { LoadingIndicator } from "@/components/loading-indicator";
 
 type RecipeContext = object;
@@ -43,9 +44,10 @@ export function RecipeChat({ recipe, editable = false, onDraft }: { recipe: Reci
 
         {(messages.length > 0 || isSending) && <div className="mt-8 space-y-3" aria-live="polite">
             {messages.map((entry, index) => <div key={`${entry.role}-${index}`} className={`flex motion-safe:animate-page-in ${entry.role === "user" ? "justify-end" : "justify-start"}`}>
-                <p className={`max-w-[85%] px-4 py-2.5 text-sm leading-6 whitespace-pre-line sm:max-w-xl ${entry.role === "user" ? "rounded-[1.25rem] rounded-br-md bg-espresso text-white" : "rounded-[1.25rem] rounded-bl-md bg-white text-espresso shadow-[0_1px_2px_rgba(66,52,33,0.06)]"}`}>
-                    <span className="sr-only">{entry.role === "user" ? "Du: " : "Crave: "}</span>{entry.content}
-                </p>
+                <div className={`max-w-[85%] px-4 py-2.5 text-sm leading-6 sm:max-w-xl ${entry.role === "user" ? "rounded-[1.25rem] rounded-br-md bg-espresso whitespace-pre-line text-white" : "rounded-[1.25rem] rounded-bl-md bg-white text-espresso shadow-[0_1px_2px_rgba(66,52,33,0.06)]"}`}>
+                    <span className="sr-only">{entry.role === "user" ? "Du: " : "Crave: "}</span>
+                    {entry.role === "user" ? entry.content : <FormattedMessage text={entry.content} />}
+                </div>
             </div>)}
             {isSending && <div className="flex justify-start"><div className="rounded-[1.25rem] rounded-bl-md bg-white px-4 py-3 text-sm shadow-[0_1px_2px_rgba(66,52,33,0.06)]"><LoadingIndicator label="Crave denkt nach…" /></div></div>}
         </div>}
