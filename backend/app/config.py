@@ -11,9 +11,10 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     database_url: SecretStr | None = Field(default=None, alias="DATABASE_URL")
-    gemini_api_key: SecretStr | None = Field(default=None, alias="GEMINI_API_KEY")
-    openai_api_key: SecretStr | None = Field(default=None, alias="OPENAI_API_KEY")
-    openai_image_model: str = Field(default="gpt-image-2.5-flare", alias="OPENAI_IMAGE_MODEL")
+    openrouter_api_key: SecretStr | None = Field(default=None, alias="OPENROUTER_API_KEY")
+    model: str = Field(default="google/gemini-3.8-flash", alias="MODEL")
+    fast_model: str = Field(default="google/gemini-3.8-flash", alias="FAST_MODEL")
+    image_model: str = Field(default="google/gemini-nano-banana-2.1", alias="IMAGE_MODEL")
     jwt_secret: SecretStr | None = Field(default=None, alias="JWT_SECRET")
     # Comma-separated list of exact origins, e.g. https://crave.up.railway.app
     cors_origins: str = "http://localhost:3000"
@@ -31,10 +32,10 @@ class Settings(BaseSettings):
         return self.jwt_secret.get_secret_value()
 
     @property
-    def openai_api_key_value(self) -> str:
-        if self.openai_api_key is None:
-            raise RuntimeError("OPENAI_API_KEY is not set")
-        return self.openai_api_key.get_secret_value()
+    def openrouter_api_key_value(self) -> str:
+        if self.openrouter_api_key is None:
+            raise RuntimeError("OPENROUTER_API_KEY is not set")
+        return self.openrouter_api_key.get_secret_value()
 
     @property
     def cors_origin_list(self) -> list[str]:

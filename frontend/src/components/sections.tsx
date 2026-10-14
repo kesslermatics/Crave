@@ -6,7 +6,7 @@ const modes = [
 
 const steps = [
     { n: "01", title: "Tell us what you crave", text: "Scan, set a goal or pick a mood." },
-    { n: "02", title: "Crave creates your recipe", text: "Gemini tailors ingredients, steps and nutrition." },
+    { n: "02", title: "Crave creates your recipe", text: "AI tailors ingredients, steps and nutrition." },
     { n: "03", title: "Cook and enjoy", text: "Follow clear steps, swap anything, save your favorites." },
 ];
 
@@ -125,7 +125,7 @@ export function Footer() {
         <footer className="border-t border-espresso/8 pb-28 md:pb-0">
             <div className="mx-auto flex max-w-7xl flex-col gap-2 px-5 py-8 text-xs text-bark sm:flex-row sm:items-center sm:justify-between sm:px-8">
                 <p className="flex items-center gap-1.5 font-bold text-espresso"><span className="grid h-5 w-5 place-items-center rounded-md bg-saffron text-xs" aria-hidden="true">🍳</span>crave</p>
-                <p>AI-powered culinary engine · Built with Next.js, FastAPI &amp; Gemini</p>
+                <p>AI-powered culinary engine &middot; Built with Next.js, FastAPI &amp; OpenRouter</p>
             </div>
         </footer>
     );

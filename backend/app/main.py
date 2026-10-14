@@ -112,5 +112,5 @@ async def database_health() -> dict[str, str]:
 
 @app.post("/recipes/generate", response_model=RecipePreview)
 async def generate_recipe(request: RecipeRequest) -> RecipePreview:
-    """Return a placeholder recipe until Gemini generation is connected."""
+    """Return a placeholder recipe until AI generation is connected."""
     return RecipePreview(title="Golden chicken bowl" if request.ingredients else "Your next favorite bowl", cooking_time_minutes=18, calories=542, protein_grams=request.target_protein_grams or 46)
