@@ -5,6 +5,7 @@ import binascii
 import json
 import logging
 import re
+from functools import lru_cache
 from typing import Any, Literal, Union
 from uuid import UUID
 
@@ -323,24 +324,45 @@ RECIPE_TYPE_GUIDANCE = (
 )
 
 RECIPE_DETAILS_GUIDANCE = (
+    'Jedes Rezept-Objekt MUSS folgende Felder auf oberster Ebene enthalten: '
+    'title (String), description (zwei kurze Sätze, natürliches Deutsch, keine Floskeln), '
+    'recipe_type (String), appliance (String), difficulty ("easy", "medium" oder "hard"), '
+    'servings (int > 0), total_time_minutes (int, Summe aus Vor- und Kochzeit), '
+    'calories (int), protein_g (float), carbs_g (float), fat_g (float), '
+    'image_data (immer null), is_ai_generated (immer true), tags (Liste von Strings), '
+    'ingredients (Liste von Objekten mit name, amount (float), unit (String)), '
+    'instructions (Liste von Strings, ein Schritt pro Eintrag), '
+    'details (Objekt – Felder je nach recipe_type siehe unten).\n'
     'Das Objekt "details" MUSS für den gewählten recipe_type genau die folgenden Felder und Wertebereiche enthalten:\n'
     '- Für "meal": cooking_method (z. B. "Kochen", "Braten"), required_equipment (Liste von Strings), '
     'prep_time_minutes (int), cook_time_minutes (int), meal_prep_friendly (bool), fridge_life_days (int), '
-    'freezable (bool), spiciness_level (int 1-5), volume_index ("low", "medium", "high"), '
-    'served_temperature ("hot", "warm", "cold").\n'
-    '- Für "baking": oven_temperature_c (int, 0 wenn ohne Backofen), oven_mode ("conventional", "fan", "hot_air"), '
+    'freezable (bool), spiciness_level (int 1–5), volume_index ("low", "medium" oder "high"), '
+    'served_temperature ("hot", "warm" oder "cold").\n'
+    '- Für "baking": oven_temperature_c (int, 0 wenn kein Backofen nötig), oven_mode ("conventional", "fan" oder "hot_air"), '
     'preheat_required (bool), pan_type (String), pan_size_cm (float), resting_time_minutes (int), '
     'cooling_time_minutes (int), dough_type (String), special_techniques (Liste von Strings).\n'
-    '- Für "drink": prep_method ("blended", "shaken", "stirred", "brewed", "steeped", "built_in_glass"), '
+    '- Für "drink": prep_method ("blended", "shaken", "stirred", "brewed", "steeped" oder "built_in_glass"), '
     'required_equipment (Liste von Strings), '
-    'served_temperature ("hot", "iced", "chilled", "room_temperature"; setze "iced" bei Eis/Eiswürfeln, "hot" bei Heißgetränken, "chilled" bei kalten Drinks ohne Eis), '
-    'ice_type ("none", "cubes", "crushed"; wenn Eiswürfel oder Eis im Rezept vorkommen, setze "cubes" oder "crushed", sonst "none"), '
-    'caffeine_level ("none", "low", "high"; setze "high" bei Kaffee, Espresso, Cold Brew oder starkem Tee, "low" bei leichtem Tee, "none" bei koffeinfreien Getränken), '
-    'abv_percent (float, 0 bei alkoholfrei), glass_type (String, z. B. "Glas", "Highball-Glas", "Kaffeeglas"), volume_ml (int, z. B. 250, 300).\n'
+    'served_temperature ("hot" bei Heißgetränken, "iced" bei Getränken mit Eis, "chilled" bei kalten Drinks ohne Eis, "room_temperature" sonst), '
+    'ice_type ("none" wenn kein Eis, "cubes" bei Eiswürfeln, "crushed" bei Crushed Ice), '
+    'caffeine_level ("high" bei Kaffee/Espresso/Cold Brew/starkem Tee, "low" bei leichtem Tee, "none" bei koffeinfreien Getränken), '
+    'abv_percent (float, 0.0 bei alkoholfrei), glass_type (String, z. B. "Cappuccinotasse", "Highball-Glas"), volume_ml (int).\n'
     '- Für "basic": yield_amount (float), yield_unit (String), serving_size_amount (float), serving_size_unit (String), '
-    'storage_method ("fridge", "pantry", "freezer"), shelf_life_days (int), storage_tips (Liste von Strings), '
-    'component_type (String), pairs_well_with (Liste von Strings), resting_time_minutes (int).'
+    'storage_method ("fridge", "pantry" oder "freezer"), shelf_life_days (int), storage_tips (Liste von Strings), '
+    'component_type (String), pairs_well_with (Liste von Strings), resting_time_minutes (int).\n'
+    '- Für "preserving": preservation_method (String, z. B. "Einkochen", "Fermentieren"), '
+    'storage_method ("fridge", "pantry" oder "freezer"), shelf_life_days (int), processing_time_minutes (int).'
 )
+
+
+@lru_cache(maxsize=1)
+def _recipe_create_schema_json() -> str:
+    """Return the RecipeCreate JSON Schema as a compact string, generated once and cached."""
+    schema = RecipeCreate.model_json_schema()
+    # Remove fields the model must never set — keeps the schema focused
+    for field in ("id", "created_at", "updated_at"):
+        schema.get("properties", {}).pop(field, None)
+    return json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
 
 
 APPLIANCE_GUIDANCE = (
@@ -590,7 +612,10 @@ async def generate_recipe_suggestions(
     )
     user_wish = request.prompt or "Kein zusätzlicher Text – schlage passende Gerichte aus den Zutaten vor."
     prompt = f"""Du bist der kulinarische Ideengeber für die deutsche Koch-App Crave.
-Erstelle exakt drei unterschiedliche, realistische Rezeptvorschläge als valides JSON-Objekt mit den Schlüsseln "detected_ingredients" und "recipes". {photo_guidance} {ingredient_context} Jeder Eintrag in "recipes" muss alle Felder eines RecipeCreate-Objekts enthalten und sofort speicherbar sein. {RECIPE_TYPE_GUIDANCE} Für "meal" verwende cooking_method, required_equipment, prep_time_minutes, cook_time_minutes, meal_prep_friendly, fridge_life_days, freezable, spiciness_level, volume_index und served_temperature. Für "baking" verwende oven_temperature_c, oven_mode, preheat_required, pan_type, pan_size_cm, resting_time_minutes, cooling_time_minutes, dough_type und special_techniques. Für "drink" verwende prep_method, required_equipment, served_temperature, ice_type, abv_percent, caffeine_level, glass_type und volume_ml. Für "basic" verwende yield_amount, yield_unit, serving_size_amount, serving_size_unit, storage_method, shelf_life_days, storage_tips, component_type, pairs_well_with und resting_time_minutes. Verwende ausschließlich difficulty "easy", "medium" oder "hard". Setze image_data auf null und is_ai_generated auf true. Setze appliance auf "none", außer der Nutzer wünscht ausdrücklich ein Thermomix- oder Monsieur-Cuisine-Rezept; dann "thermomix" bzw. "monsieur_cuisine" und schreibe jeden Schritt mit den Geräteeinstellungen im Stil des Geräts (z. B. "10 Sek./Stufe 5", "3 Min./100 °C/Linkslauf/Stufe 1", "Varoma").
+Erstelle exakt drei unterschiedliche, realistische Rezeptvorschläge als valides JSON-Objekt mit den Schlüsseln "detected_ingredients" und "recipes". {photo_guidance} {ingredient_context} Jeder Eintrag in "recipes" muss dem folgenden JSON-Schema entsprechen und sofort speicherbar sein. {RECIPE_TYPE_GUIDANCE} {APPLIANCE_GUIDANCE}
+RecipeCreate-Schema (alle Felder, Typen und Enum-Werte sind verbindlich): {_recipe_create_schema_json()}
+Das Feld "details" ist ein Objekt dessen Felder vom recipe_type abhängen – befülle es nach diesen Vorgaben: {RECIPE_DETAILS_GUIDANCE}
+Setze image_data immer auf null und is_ai_generated immer auf true. total_time_minutes ist die Summe aus Vor- und Kochzeit.
 Die Beschreibungen müssen natürliches Deutsch sein, zwei kurze Sätze enthalten und ohne Marketingfloskeln auskommen. Zutaten brauchen präzise Namen, exakte Mengen und passende Einheiten. Erkläre die Zubereitung in klaren, ausführbaren Einzelschritten: Zutatenzustand, Reihenfolge, Hitze, Dauer, sichtbare Anzeichen und wichtige Zwischenschritte, soweit sie für ein verlässliches Ergebnis nötig sind. Verwende nur plausible Nährwerte und Zeitangaben. Keine Markdown-Formatierung und keinen Text außerhalb des JSON.
 Berücksichtige alle vorherigen Wünsche als zusammenhängenden Verlauf. Der neueste Wunsch konkretisiert oder verändert die bisherigen Wünsche.
 {first_batch_guidance}
