@@ -58,7 +58,7 @@ function SuggestionCard({ recipe, onOpen }: { recipe: Suggestion; onOpen: () => 
 }
 
 function CardSkeletons() {
-    return <>{[0, 1, 2].map((item) => <div key={item} className="flex min-h-56 animate-fade-in flex-col rounded-2xl bg-white/70 p-5 ring-1 ring-espresso/[0.06]" aria-hidden="true">
+    return <>{[0, 1].map((item) => <div key={item} className="flex min-h-56 animate-fade-in flex-col rounded-2xl bg-white/70 p-5 ring-1 ring-espresso/[0.06]" aria-hidden="true">
         <div className="h-3 w-20 rounded-full bg-espresso/[0.07] motion-safe:animate-shimmer" />
         <div className="mt-4 h-5 w-4/5 rounded-full bg-espresso/[0.07] motion-safe:animate-shimmer" />
         <div className="mt-3 h-3 w-full rounded-full bg-espresso/[0.05] motion-safe:animate-shimmer" />
@@ -222,7 +222,7 @@ export function HomeSuggestions() {
             <p className="mx-auto mt-4 max-w-md text-base leading-7 text-bark">Beschreibe deinen Wunsch oder fotografiere, was du im Kühlschrank hast.</p>
             <div className="mt-9">
                 <SuggestionComposer value={prompt} onChange={setPrompt} images={images} onImagesChange={setImages} onSubmit={() => submit("new")} onError={setError} isLoading={pending === "new"}
-                    placeholder="z. B. etwas Warmes, Cremiges mit viel Gemüse…" submitLabel="3 Ideen finden" loadingLabel="Ideen entstehen…" label="Deinen Essenswunsch beschreiben" />
+                    placeholder="z. B. etwas Warmes, Cremiges mit viel Gemüse…" submitLabel="2 Ideen finden" loadingLabel="Ideen entstehen…" label="Deinen Essenswunsch beschreiben" />
                 {errorBox}
                 <div className="mt-5 flex flex-wrap justify-center gap-2">
                     {examplePrompts.map((example) => <button key={example} type="button" onClick={() => setPrompt(example)} className="rounded-full bg-white/60 px-3.5 py-1.5 text-xs font-medium text-bark ring-1 ring-espresso/[0.08] transition hover:bg-white hover:text-espresso">{example}</button>)}
@@ -260,7 +260,7 @@ export function HomeSuggestions() {
                                 {isLast && pending === "more" && <CardSkeletons />}
                             </div>
                             {isLast && <button type="button" onClick={() => submit("more")} disabled={isLoading} className="mt-5 -ml-3 inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-sm font-semibold text-caramel transition hover:bg-caramel/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40 disabled:opacity-50">
-                                {pending === "more" ? <LoadingIndicator label="Weitere Ideen entstehen…" /> : <><Plus size={16} strokeWidth={2.5} aria-hidden="true" />3 weitere Ideen</>}
+                                {pending === "more" ? <LoadingIndicator label="Weitere Ideen entstehen…" /> : <><Plus size={16} strokeWidth={2.5} aria-hidden="true" />2 weitere Ideen</>}
                             </button>}
                         </div>}
                     </li>;
