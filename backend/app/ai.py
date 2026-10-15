@@ -6,7 +6,7 @@ import json
 import logging
 import re
 from functools import lru_cache
-from typing import Any, Literal, Union
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -156,10 +156,29 @@ class GeneratedBasicDetails(BaseModel):
     resting_time_minutes: int = Field(ge=0, le=10_080)
 
 
-class GeneratedRecipeBase(BaseModel):
+GENERATED_DETAIL_MODELS: dict[str, type[BaseModel]] = {
+    "meal": GeneratedMealDetails,
+    "baking": GeneratedBakingDetails,
+    "drink": GeneratedDrinkDetails,
+    "basic": GeneratedBasicDetails,
+}
+
+
+class GeneratedRecipe(BaseModel):
+    """Flat (non-union) recipe shape for structured output.
+
+    Gemini's structured-output mode rejects the `anyOf`/discriminated-union schema that
+    Pydantic generates for a Union of per-type recipe models (works fine with OpenAI, but
+    fails with "Request contains an invalid argument" via OpenRouter). Keeping `details` as
+    a plain object and validating it against the matching per-type model afterwards avoids
+    the union entirely while still giving every provider the same strict field list via the
+    prompt's RECIPE_DETAILS_GUIDANCE.
+    """
+
     title: str = Field(min_length=1, max_length=200)
     description: str = Field(min_length=1, max_length=2_000)
-    image_data: None
+    image_data: None = None
+    recipe_type: Literal["meal", "baking", "drink", "basic"]
     servings: int = Field(gt=0, le=100)
     total_time_minutes: int = Field(ge=0, le=10_080)
     difficulty: Literal["easy", "medium", "hard"]
@@ -169,35 +188,16 @@ class GeneratedRecipeBase(BaseModel):
     fat_g: float = Field(ge=0, le=10_000)
     ingredients: list[GeneratedIngredient] = Field(min_length=1, max_length=100)
     instructions: list[str] = Field(min_length=1, max_length=100)
-    is_ai_generated: bool
+    details: dict[str, Any] = Field(default_factory=dict)
+    is_ai_generated: bool = True
     tags: list[str] = Field(max_length=30)
     appliance: Literal["none", "thermomix", "monsieur_cuisine"]
 
-
-class GeneratedMealRecipe(GeneratedRecipeBase):
-    recipe_type: Literal["meal"]
-    details: GeneratedMealDetails
-
-
-class GeneratedBakingRecipe(GeneratedRecipeBase):
-    recipe_type: Literal["baking"]
-    details: GeneratedBakingDetails
-
-
-class GeneratedDrinkRecipe(GeneratedRecipeBase):
-    recipe_type: Literal["drink"]
-    details: GeneratedDrinkDetails
-
-
-class GeneratedBasicRecipe(GeneratedRecipeBase):
-    recipe_type: Literal["basic"]
-    details: GeneratedBasicDetails
-
-
-# The Responses API permits `anyOf` in array item schemas but rejects Pydantic's
-# discriminator-generated `oneOf` form. Recipe type literals still make the
-# variants unambiguous during Pydantic validation.
-GeneratedRecipe = Union[GeneratedMealRecipe, GeneratedBakingRecipe, GeneratedDrinkRecipe, GeneratedBasicRecipe]
+    def to_recipe_create(self) -> "RecipeCreate":
+        """Validate `details` against the per-type model, then build a full RecipeCreate."""
+        detail_model = GENERATED_DETAIL_MODELS[self.recipe_type]
+        validated_details = detail_model.model_validate(self.details).model_dump(mode="json")
+        return RecipeCreate.model_validate({**self.model_dump(), "details": validated_details})
 
 
 class GeneratedRecipeSuggestions(BaseModel):
@@ -641,7 +641,7 @@ Nutzerwunsch: {user_wish}"""
         )
         if response.output_parsed is None:
             raise ValueError("LLM did not return a structured recipe response")
-        recipes = [RecipeCreate.model_validate(recipe.model_dump()) for recipe in response.output_parsed.recipes]
+        recipes = [recipe.to_recipe_create() for recipe in response.output_parsed.recipes]
         serialised_recipes = [recipe.model_dump(mode="json") for recipe in recipes]
         detected = [name.strip() for name in response.output_parsed.detected_ingredients if name.strip()] if request.images else []
         if history is None:
