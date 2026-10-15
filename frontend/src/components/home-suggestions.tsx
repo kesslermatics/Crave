@@ -180,7 +180,7 @@ export function HomeSuggestions() {
                 body: JSON.stringify({ prompt: text, history_id: kind === "new" ? null : currentSessionId, load_more: kind === "more", exclude_titles: kind === "more" ? lastRound?.recipes.map((recipe) => recipe.title) ?? [] : [], images: photos }),
             });
             const result: { history_id?: string; recipes?: Suggestion[]; detected_ingredients?: string[]; detail?: unknown } = await response.json().catch(() => ({}));
-            if (!response.ok || !result.history_id || !result.recipes || result.recipes.length !== 3) throw new Error(typeof result.detail === "string" ? result.detail : "Die Rezeptideen konnten nicht erstellt werden.");
+            if (!response.ok || !result.history_id || !result.recipes || result.recipes.length < 1) throw new Error(typeof result.detail === "string" ? result.detail : "Die Rezeptideen konnten nicht erstellt werden.");
             const round: Iteration = { prompt: text, recipes: result.recipes, detected_ingredients: result.detected_ingredients ?? [], photo_count: photos.length };
             // „Weitere Ideen“ ergänzt im Backend immer die letzte Runde.
             const nextIterations = kind === "more" ? history.map((entry, index) => index === history.length - 1 ? { ...entry, recipes: [...entry.recipes, ...result.recipes!] } : entry) : kind === "new" ? [round] : [...history, round];
