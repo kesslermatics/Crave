@@ -22,7 +22,7 @@ MAX_SOURCE_CHARS = 28_000
 MAX_STRUCTURED_CHARS = 14_000
 TIMEOUT = httpx.Timeout(12.0, connect=5.0)
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; CraveRecipeImport/1.0; +https://crave-frontend-production.up.railway.app)",
+    "User-Agent": "Mozilla/5.0 (compatible; CraveRecipeImport/1.0)",
     "Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
     "Accept-Language": "de-DE,de;q=0.9,en;q=0.6",
 }

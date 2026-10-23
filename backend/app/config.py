@@ -1,4 +1,4 @@
-"""Environment-driven settings. Secrets come from Railway variables, never from code."""
+"""Environment-driven settings. Secrets come from the deployment environment (Dokploy), never from code."""
 
 from functools import lru_cache
 
@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     fast_model: str = Field(default="google/gemini-3.8-flash", alias="FAST_MODEL")
     image_model: str = Field(default="google/gemini-nano-banana-2.1", alias="IMAGE_MODEL")
     jwt_secret: SecretStr | None = Field(default=None, alias="JWT_SECRET")
-    # Comma-separated list of exact origins, e.g. https://crave.up.railway.app
+    # Comma-separated list of exact origins, e.g. https://crave.example.com
     cors_origins: str = "http://localhost:3000"
     # Comma-separated list of accepted Host headers; "*" only for local development.
     allowed_hosts: str = "localhost,127.0.0.1"
@@ -44,12 +44,12 @@ class Settings(BaseSettings):
     @property
     def allowed_host_list(self) -> list[str]:
         hosts = [h.strip() for h in self.allowed_hosts.split(",") if h.strip()]
-        # Railway's healthcheck probes with this Host header.
-        return hosts + ["healthcheck.railway.app"]
+        # The container HEALTHCHECK probes http://127.0.0.1, so these must always be accepted.
+        return hosts + ["localhost", "127.0.0.1"]
 
     @property
     def sqlalchemy_database_url(self) -> str | None:
-        """Normalize Railway's postgres:// / postgresql:// URL for SQLAlchemy + asyncpg."""
+        """Normalize a postgres:// / postgresql:// URL for SQLAlchemy + asyncpg."""
         if self.database_url is None:
             return None
         url = self.database_url.get_secret_value()

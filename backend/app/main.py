@@ -16,10 +16,8 @@ from app.recipes import router as recipes_router
 from app.shopping import router as shopping_router
 
 settings = get_settings()
-PRODUCTION_FRONTEND_ORIGIN = "https://crave-frontend-production.up.railway.app"
-PRODUCTION_BACKEND_HOST = "crave-backend-production.up.railway.app"
-cors_origins = list(dict.fromkeys([PRODUCTION_FRONTEND_ORIGIN, *settings.cors_origin_list]))
-trusted_hosts = list(dict.fromkeys([PRODUCTION_BACKEND_HOST, "healthcheck.railway.app", *settings.allowed_host_list]))
+cors_origins = list(dict.fromkeys(settings.cors_origin_list))
+trusted_hosts = list(dict.fromkeys(settings.allowed_host_list))
 
 
 @asynccontextmanager
@@ -48,8 +46,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    # The deployed Railway frontend is always accepted, even when Railway
-    # variables have not been configured. Local origins may be added in .env.
+    # Exact origins come from CORS_ORIGINS (set to the public frontend URL in Dokploy).
     allow_origins=cors_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
@@ -57,8 +54,8 @@ app.add_middleware(
 )
 app.add_middleware(
     TrustedHostMiddleware,
-    # Keep the deployed Railway domain reachable even when the environment
-    # variable has not yet been entered in the Railway dashboard.
+    # Public backend domain(s) come from ALLOWED_HOSTS; localhost is always allowed
+    # so the container's own HEALTHCHECK works.
     allowed_hosts=trusted_hosts,
 )
 app.include_router(auth_router)

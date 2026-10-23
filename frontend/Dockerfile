@@ -17,11 +17,13 @@ FROM node:22-alpine AS run
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
-    HOSTNAME=0.0.0.0
+    HOSTNAME=0.0.0.0 \
+    PORT=3000
 COPY --from=build /app/.next/standalone ./
 COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 # Run as the unprivileged user shipped with the node image.
 USER node
-# Railway injects PORT; Next's standalone server reads it.
+# The Dokploy domain must point at this port (default 3000); Next's standalone server reads PORT.
+EXPOSE 3000
 CMD ["node", "server.js"]

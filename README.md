@@ -10,32 +10,35 @@
 
 **Saffron** uses a white canvas with saffron gold (`#D7C56D`), roasted caramel (`#996130`), and espresso brown (`#423421`). It is an earthy, refined food-first direction.
 
-## Deploying on Railway
+## Deploying with Dokploy
 
-Create three services: Postgres, `backend` (root directory `backend`) and `frontend` (root directory `frontend`). Each folder has a `Dockerfile` and `railway.json`.
+Create three resources: a Postgres database, `backend` (Dockerfile build, build path `backend`, Dockerfile `Dockerfile`) and `frontend` (Dockerfile build, build path `frontend`).
 
-**backend variables**
+For each application, add a domain in Dokploy and set the **container port**: `8000` for the backend, `3000` for the frontend. A wrong port is the usual cause of `Bad Gateway`.
+
+**backend environment**
 
 | Variable | Value |
 | --- | --- |
 | `ENVIRONMENT` | `production` (disables `/docs` and the OpenAPI schema, enables HSTS) |
-| `DATABASE_URL` | `${{Postgres.DATABASE_URL}}` (reference variable) |
-| `GEMINI_API_KEY` | your key (keep it as a Railway secret) |
-| `OPENAI_API_KEY` | OpenAI secret for `gpt-6-sol` descriptions and `image-1` recipe images |
-| `JWT_SECRET` | a long, cryptographically random Railway secret used to sign access tokens |
-| `CORS_ORIGINS` | not needed in production; CORS is pinned to `https://crave-frontend-production.up.railway.app` in the API code |
-| `ALLOWED_HOSTS` | `crave-backend-production.up.railway.app` |
+| `DATABASE_URL` | internal connection URL of the Dokploy Postgres service (`postgresql://user:pass@<service-name>:5432/db`) |
+| `OPENROUTER_API_KEY` | OpenRouter secret for the models |
+| `JWT_SECRET` | a long (32+ bytes), cryptographically random secret used to sign access tokens |
+| `CORS_ORIGINS` | exact public frontend origin, e.g. `https://crave.example.com` (no trailing path, no `*`) |
+| `ALLOWED_HOSTS` | public backend hostname, e.g. `api.crave.example.com` (no scheme) |
 
-**frontend variables**
+`PORT` defaults to `8000` and does not need to be set.
+
+**frontend build arguments** (Dokploy: Advanced → Build Args; the value is inlined at build time)
 
 | Variable | Value |
 | --- | --- |
-| `NEXT_PUBLIC_API_URL` | `https://crave-backend-production.up.railway.app` (inlined at build time, contains no secrets) |
+| `NEXT_PUBLIC_API_URL` | public backend URL, e.g. `https://api.crave.example.com` (contains no secrets) |
 
 Never commit `.env` files; only `.env.example` templates are tracked.
 
 ## Account activation
 
-New signup accounts are stored with `is_active=false`; they cannot obtain an access token until manually enabled. There is intentionally no public admin endpoint. Run the following command in the backend Railway service to enable an account:
+New signup accounts are stored with `is_active=false`; they cannot obtain an access token until manually enabled. There is intentionally no public admin endpoint. Run the following command in the backend container (Dokploy: Terminal tab) to enable an account:
 
 `python -m app.admin activate-user person@example.com`
