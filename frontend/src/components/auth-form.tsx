@@ -57,13 +57,18 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
 
     return (
-        <form onSubmit={handleSubmit} className="mt-8 space-y-5" noValidate>
+        <form id={isSignup ? "signup-form" : "login-form"} method="post" onSubmit={handleSubmit} className="mt-8 space-y-5" noValidate>
             <label className="block text-sm font-bold text-espresso">
                 E-Mail-Adresse
                 <input
                     type="email"
+                    id="email"
                     name="email"
-                    autoComplete="email"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    inputMode="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     required
@@ -75,6 +80,7 @@ export function AuthForm({ mode }: AuthFormProps) {
                 Passwort
                 <input
                     type="password"
+                    id="password"
                     name="password"
                     autoComplete={isSignup ? "new-password" : "current-password"}
                     value={password}
@@ -89,7 +95,7 @@ export function AuthForm({ mode }: AuthFormProps) {
             {isSignup && <p className="text-xs leading-5 text-bark">Nutze mindestens 12 Zeichen. Dein Konto muss vor der Anmeldung manuell freigeschaltet werden.</p>}
             {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
             {message && <p role="status" className="rounded-xl bg-cream px-4 py-3 text-sm font-medium text-espresso">{message}</p>}
-            <button disabled={isSubmitting} className="w-full rounded-full bg-caramel px-6 py-4 text-sm font-bold text-white shadow-[0_12px_24px_rgba(153,97,48,0.2)] transition hover:bg-espresso disabled:cursor-wait disabled:opacity-60">
+            <button type="submit" disabled={isSubmitting} className="w-full rounded-full bg-caramel px-6 py-4 text-sm font-bold text-white shadow-[0_12px_24px_rgba(153,97,48,0.2)] transition hover:bg-espresso disabled:cursor-wait disabled:opacity-60">
                 {isSubmitting ? "Bitte warten…" : isSignup ? "Konto erstellen" : "Anmelden"}
             </button>
             <p className="text-center text-sm text-bark">
