@@ -79,14 +79,25 @@ async def resolve_tags(session: AsyncSession, names: list[str]) -> list[Tag]:
     return tags
 
 
+async def get_owned_recipe(session: AsyncSession, recipe_id: UUID, user: User) -> Recipe:
+    """Load a recipe of the current user; other users' recipes are reported as not found."""
+    recipe = await session.scalar(
+        select(Recipe).options(selectinload(Recipe.tags)).where(Recipe.id == recipe_id, Recipe.owner_id == user.id)
+    )
+    if recipe is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rezept nicht gefunden")
+    return recipe
+
+
 @router.post("", response_model=RecipeRead, status_code=status.HTTP_201_CREATED)
 async def create_recipe(
     payload: RecipeCreate,
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> RecipeRead:
-    """Persist a fully validated recipe and its normalized tags."""
+    """Persist a fully validated recipe and its normalized tags for the current user."""
     recipe = Recipe(
+        owner_id=user.id,
         title=payload.title,
         description=payload.description,
         recipe_type=payload.recipe_type,
@@ -119,10 +130,15 @@ async def list_recipes(
     tag: str | None = Query(default=None, min_length=1, max_length=80),
     search: str | None = Query(default=None, min_length=1, max_length=100),
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> list[RecipeSummary]:
-    """List all matching recipes, alphabetically by title, using type, time, macro, and tag filters."""
-    statement = select(Recipe).options(selectinload(Recipe.tags)).order_by(func.lower(Recipe.title), Recipe.created_at.desc())
+    """List the current user's matching recipes, alphabetically by title, using type, time, macro, and tag filters."""
+    statement = (
+        select(Recipe)
+        .options(selectinload(Recipe.tags))
+        .where(Recipe.owner_id == user.id)
+        .order_by(func.lower(Recipe.title), Recipe.created_at.desc())
+    )
     if recipe_type is not None:
         statement = statement.where(Recipe.recipe_type == recipe_type)
     if max_time_minutes is not None:
@@ -142,13 +158,9 @@ async def list_recipes(
 async def get_recipe(
     recipe_id: UUID,
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> RecipeRead:
-    statement = select(Recipe).options(selectinload(Recipe.tags)).where(Recipe.id == recipe_id)
-    recipe = await session.scalar(statement)
-    if recipe is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="recipe not found")
-    return serialise_recipe(recipe)
+    return serialise_recipe(await get_owned_recipe(session, recipe_id, user))
 
 
 @router.put("/{recipe_id}", response_model=RecipeRead)
@@ -156,12 +168,10 @@ async def update_recipe(
     recipe_id: UUID,
     payload: RecipeCreate,
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> RecipeRead:
-    """Replace an existing recipe with a fully validated edited draft."""
-    recipe = await session.scalar(select(Recipe).options(selectinload(Recipe.tags)).where(Recipe.id == recipe_id))
-    if recipe is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rezept nicht gefunden")
+    """Replace one of the current user's recipes with a fully validated edited draft."""
+    recipe = await get_owned_recipe(session, recipe_id, user)
     recipe.title = payload.title
     recipe.description = payload.description
     recipe.recipe_type = payload.recipe_type
@@ -188,11 +198,9 @@ async def update_recipe(
 async def delete_recipe(
     recipe_id: UUID,
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ) -> None:
-    """Permanently remove a saved recipe."""
-    recipe = await session.get(Recipe, recipe_id)
-    if recipe is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rezept nicht gefunden")
+    """Permanently remove one of the current user's saved recipes."""
+    recipe = await get_owned_recipe(session, recipe_id, user)
     await session.delete(recipe)
     await session.commit()

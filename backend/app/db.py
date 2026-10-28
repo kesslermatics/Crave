@@ -41,3 +41,6 @@ async def initialize_database() -> None:
         await connection.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS image_data TEXT"))
         # Kitchen-machine flag (Thermomix / Monsieur Cuisine); existing recipes default to "none".
         await connection.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS appliance VARCHAR(20) NOT NULL DEFAULT 'none'"))
+        # Recipe ownership; existing rows stay unowned (and hidden) until assigned via app.admin.
+        await connection.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS owner_id VARCHAR(36) REFERENCES users(id) ON DELETE CASCADE"))
+        await connection.execute(text("CREATE INDEX IF NOT EXISTS ix_recipes_owner_id ON recipes (owner_id)"))

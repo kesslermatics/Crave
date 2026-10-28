@@ -40,6 +40,9 @@ class Recipe(Base):
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    # Every recipe belongs to exactly one account. Nullable only so the column can be added to
+    # existing databases; rows without an owner are invisible to every user.
+    owner_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     recipe_type: Mapped[RecipeType] = mapped_column(Enum(RecipeType, name="recipe_type"), nullable=False, index=True)

@@ -171,14 +171,59 @@ function RecipeBody({ recipe, servings, onServingsChange, ingredients, shoppingA
     </div>;
 }
 
+type SavePhase = "idle" | "image" | "saving";
+
+const savePhaseLabel: Record<Exclude<SavePhase, "idle">, string> = {
+    image: "Bild wird erstellt…",
+    saving: "Rezept wird gespeichert…",
+};
+
+/** Same request the editor's "Bild erstellen" sends; returns null if the image AI is unavailable. */
+async function generateRecipeImage(recipe: Recipe, token: string | null): Promise<string | null> {
+    const context = {
+        title: recipe.title, recipe_type: recipe.recipe_type, ingredients: recipe.ingredients, instructions: recipe.instructions,
+        total_time_minutes: recipe.total_time_minutes, calories: recipe.calories, protein_g: recipe.protein_g, carbs_g: recipe.carbs_g, fat_g: recipe.fat_g,
+        details: recipe.details, tags: recipe.tags,
+    };
+    try {
+        const response = await fetch(`${apiUrl}/ai/recipe-image`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(context) });
+        const result: { image_data?: string } = await response.json().catch(() => ({}));
+        return response.ok && result.image_data ? result.image_data : null;
+    } catch {
+        return null;
+    }
+}
+
 function FullView({ recipe, proposal, children }: { recipe: Recipe; proposal: boolean; children?: ReactNode }) {
     const router = useRouter();
-    const [isSaving, setIsSaving] = useState(false);
+    const [savePhase, setSavePhase] = useState<SavePhase>("idle");
     const [error, setError] = useState("");
-    async function save() { setIsSaving(true); setError(""); try { const token = sessionStorage.getItem("crave_access_token"); const response = await fetch(`${apiUrl}/recipes`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify(recipe) }); const result: { id?: string; detail?: string } = await response.json().catch(() => ({})); if (!response.ok || !result.id) throw new Error(result.detail ?? "Das Rezept konnte nicht gespeichert werden."); sessionStorage.removeItem("crave_selected_suggestion"); router.replace(`/recipes/${result.id}`); } catch (caught) { setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht gespeichert werden."); } finally { setIsSaving(false); } }
+    const isSaving = savePhase !== "idle";
 
-    const saveButton = (className = "") => <button onClick={save} disabled={isSaving} className={`${pillPrimary} ${className}`}>
-        {isSaving ? <LoadingIndicator label="Wird gespeichert…" light /> : <><BookmarkPlus size={16} strokeWidth={2.25} aria-hidden="true" />In meine Rezepte</>}
+    async function save() {
+        setError("");
+        try {
+            const token = sessionStorage.getItem("crave_access_token");
+            let imageData = recipe.image_data;
+            if (!imageData) {
+                setSavePhase("image");
+                // A failed image must not cost the user the recipe: save without it, an image can be added later in the editor.
+                imageData = await generateRecipeImage(recipe, token);
+            }
+            setSavePhase("saving");
+            const response = await fetch(`${apiUrl}/recipes`, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` }, body: JSON.stringify({ ...recipe, image_data: imageData }) });
+            const result: { id?: string; detail?: string } = await response.json().catch(() => ({}));
+            if (!response.ok || !result.id) throw new Error(result.detail ?? "Das Rezept konnte nicht gespeichert werden.");
+            sessionStorage.removeItem("crave_selected_suggestion");
+            router.replace(`/recipes/${result.id}`);
+        } catch (caught) {
+            setError(caught instanceof Error ? caught.message : "Das Rezept konnte nicht gespeichert werden.");
+            setSavePhase("idle");
+        }
+    }
+
+    const saveButton = (className = "") => <button onClick={save} disabled={isSaving} aria-busy={isSaving} className={`${pillPrimary} ${className}`}>
+        {savePhase !== "idle" ? <LoadingIndicator label={savePhaseLabel[savePhase]} light /> : <><BookmarkPlus size={16} strokeWidth={2.25} aria-hidden="true" />In meine Rezepte</>}
     </button>;
 
     // Portionen skalieren: alle Mengen rechnen sich relativ zur Originalportionenzahl um.
