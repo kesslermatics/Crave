@@ -1,7 +1,8 @@
 // Crave Service Worker: macht bereits besuchte Seiten (v. a. die Einkaufsliste) offline aufrufbar.
 // Bewusst schlicht gehalten – es werden nur eigene, nicht-personalisierte Dateien gecacht.
-// API-Aufrufe (anderer Ursprung, mit Token) werden nie angefasst.
-const CACHE = "crave-v1";
+// API-Aufrufe (/api/..., mit Token) werden nie angefasst: Sie sind personalisiert und müssen immer frisch sein.
+// Version erhöht, damit beim Aktivieren alle bisher fälschlich gecachten API-Antworten gelöscht werden.
+const CACHE = "crave-v2";
 const OFFLINE_FALLBACK = "/einkaufsliste";
 
 self.addEventListener("install", () => {
@@ -30,6 +31,8 @@ self.addEventListener("fetch", (event) => {
     if (request.method !== "GET") return;
     const url = new URL(request.url);
     if (url.origin !== self.location.origin) return;
+    // Das Backend hängt unter /api auf demselben Ursprung wie die Seite – nie cachen, nie umleiten.
+    if (url.pathname === "/api" || url.pathname.startsWith("/api/")) return;
     // React-Server-Component-Anfragen nicht cachen; Next fällt offline auf eine normale Navigation zurück.
     if (url.searchParams.has("_rsc") || request.headers.get("RSC") === "1") return;
 
