@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, CakeSlice, Camera, ChevronDown, Clock3, CookingPot, CupSoda, Flame, History, LucideIcon, Plus, RotateCcw, Soup, X } from "lucide-react";
+import { ArrowUpRight, CakeSlice, Camera, ChevronDown, Clock3, CookingPot, CupSoda, Flame, History, LucideIcon, Plus, RotateCcw, Soup } from "lucide-react";
 
 import { ApplianceBadge } from "@/components/appliance-badge";
 import { LoadingIndicator } from "@/components/loading-indicator";
@@ -82,15 +82,12 @@ export function HomeSuggestions() {
     const [images, setImages] = useState<string[]>([]);
     const [history, setHistory] = useState<Iteration[]>([]);
     const [activeIteration, setActiveIteration] = useState(-1);
-    const [sessions, setSessions] = useState<SearchHistory[]>([]);
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-    const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [pending, setPending] = useState<RequestKind | null>(null);
     const [hasRestoredSession, setHasRestoredSession] = useState(false);
     const [error, setError] = useState("");
     const scrollTargetRef = useRef<number | null>(null);
     const isLoading = pending !== null;
-    const isHistoryOpen = searchParams.get("show-history") === "1";
     const historyToLoad = searchParams.get("history");
 
     useEffect(() => {
@@ -130,19 +127,7 @@ export function HomeSuggestions() {
         document.getElementById(`round-${activeIteration}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, [activeIteration, history.length]);
 
-    useEffect(() => {
-        if (!isHistoryOpen) return;
-        const controller = new AbortController();
-        const token = sessionStorage.getItem("crave_access_token");
-        const loadingTimer = window.setTimeout(() => setIsHistoryLoading(true), 0);
-        fetch(`${apiUrl}/ai/suggestion-history`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal })
-            .then(async (response) => { if (!response.ok) throw new Error("Suchverlauf konnte nicht geladen werden."); return response.json(); })
-            .then((items: SearchHistory[]) => setSessions(items))
-            .catch((caught) => { if ((caught as Error).name !== "AbortError") setError(caught instanceof Error ? caught.message : "Suchverlauf konnte nicht geladen werden."); })
-            .finally(() => { window.clearTimeout(loadingTimer); if (!controller.signal.aborted) setIsHistoryLoading(false); });
-        return () => { window.clearTimeout(loadingTimer); controller.abort(); };
-    }, [isHistoryOpen]);
-
+    // Wird von der Verlaufsseite (/history) mit ?history=<id> geöffnet.
     useEffect(() => {
         if (!historyToLoad) return;
         const controller = new AbortController();
@@ -153,18 +138,6 @@ export function HomeSuggestions() {
             .catch((caught) => { if ((caught as Error).name !== "AbortError") setError(caught instanceof Error ? caught.message : "Suchverlauf konnte nicht geladen werden."); });
         return () => controller.abort();
     }, [historyToLoad, router]);
-
-    async function loadSession(summary: SearchHistory) {
-        setError(""); setIsHistoryLoading(true);
-        try {
-            const token = sessionStorage.getItem("crave_access_token");
-            const response = await fetch(`${apiUrl}/ai/suggestion-history/${summary.id}`, { headers: { Authorization: `Bearer ${token}` } });
-            const result: SearchHistoryDetail | { detail?: string } = await response.json().catch(() => ({}));
-            if (!response.ok || !("iterations" in result)) throw new Error(("detail" in result && typeof result.detail === "string" && result.detail) || "Suchverlauf konnte nicht geladen werden.");
-            setHistory(result.iterations); setActiveIteration(result.iterations.length - 1); setCurrentSessionId(result.id); setPrompt(""); router.replace("/");
-        } catch (caught) { setError(caught instanceof Error ? caught.message : "Suchverlauf konnte nicht geladen werden."); }
-        finally { setIsHistoryLoading(false); }
-    }
 
     async function submit(kind: RequestKind) {
         const lastRound = history[history.length - 1];
@@ -202,19 +175,6 @@ export function HomeSuggestions() {
             {history.length > 0 && <button type="button" onClick={startOver} className={ghostPill}><RotateCcw size={15} strokeWidth={2.25} aria-hidden="true" />Neue Suche</button>}
             <Link href="/history" className={ghostPill}><History size={15} strokeWidth={2.25} aria-hidden="true" />Verlauf</Link>
         </div>
-
-        {isHistoryOpen && <section className="mt-4 rounded-3xl bg-white p-5 ring-1 ring-espresso/[0.08] motion-safe:animate-page-in sm:p-7">
-            <div className="flex items-start justify-between gap-4">
-                <h2 className="text-xl font-semibold tracking-[-0.03em] text-espresso">Frühere Suchen</h2>
-                <button onClick={() => router.replace("/")} className="grid h-9 w-9 place-items-center rounded-full text-bark transition hover:bg-linen hover:text-espresso" aria-label="Verlauf schließen"><X size={17} strokeWidth={2.25} aria-hidden="true" /></button>
-            </div>
-            {isHistoryLoading ? <p className="mt-6"><LoadingIndicator label="Verlauf wird geladen…" /></p> : sessions.length === 0 ? <p className="mt-6 text-sm text-bark">Noch keine Rezeptsuche gespeichert.</p> : <ul className="mt-4 divide-y divide-espresso/[0.07]">
-                {sessions.map((session) => <li key={session.id}><button onClick={() => loadSession(session)} className="flex w-full items-center justify-between gap-4 py-3.5 text-left transition hover:text-caramel">
-                    <span className="min-w-0"><span className="block truncate font-medium text-espresso">{session.title}</span><span className="text-xs text-bark">{new Intl.DateTimeFormat("de-DE", { dateStyle: "medium", timeStyle: "short" }).format(new Date(session.created_at))} · {session.iteration_count} {session.iteration_count === 1 ? "Runde" : "Runden"}</span></span>
-                    <ArrowUpRight size={16} strokeWidth={2.25} className="shrink-0 text-caramel" aria-hidden="true" />
-                </button></li>)}
-            </ul>}
-        </section>}
 
         {history.length === 0 ? <section className="mx-auto max-w-2xl pt-10 text-center motion-safe:animate-page-in sm:pt-16">
             <p className="text-[11px] font-semibold tracking-[0.2em] text-caramel">WORAUF HAST DU LUST?</p>
