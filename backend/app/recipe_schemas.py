@@ -257,6 +257,26 @@ class RecipeSummary(BaseModel):
     appliance: Appliance = Appliance.NONE
 
 
+class RecipeListItem(BaseModel):
+    """Lightweight list entry: carries a small thumbnail instead of the full-size image."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    title: str
+    description: str
+    recipe_type: RecipeType
+    thumbnail_data: str | None
+    total_time_minutes: int
+    difficulty: Difficulty
+    calories: int
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    tags: list[str]
+    appliance: Appliance = Appliance.NONE
+
+
 class RecipeRead(RecipeSummary):
     servings: int
     ingredients: list[Ingredient]

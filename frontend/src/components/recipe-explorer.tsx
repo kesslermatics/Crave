@@ -31,7 +31,7 @@ type Recipe = {
     calories: number;
     protein_g: number;
     tags: string[];
-    image_data: string | null;
+    thumbnail_data: string | null;
     appliance?: string;
 };
 
@@ -46,8 +46,8 @@ function RecipeCard({ recipe, index, showCategory }: { recipe: Recipe; index: nu
     const Icon = category.icon;
     return <Link href={`/recipes/${recipe.id}`} className="group block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/50 focus-visible:ring-offset-4 focus-visible:ring-offset-linen">
         <div className={`relative aspect-[4/5] overflow-hidden rounded-2xl bg-gradient-to-br ${gradients[index % gradients.length]}`}>
-            {recipe.image_data
-                ? <Image src={recipe.image_data} alt="" fill unoptimized sizes="(min-width: 1024px) 33vw, 50vw" className="object-cover transition duration-700 ease-out group-hover:scale-[1.04]" />
+            {recipe.thumbnail_data
+                ? <Image src={recipe.thumbnail_data} alt="" fill unoptimized sizes="(min-width: 1024px) 33vw, 50vw" className="object-cover transition duration-700 ease-out group-hover:scale-[1.04]" />
                 : <div className="grid h-full place-items-center text-white/70"><Icon size={36} strokeWidth={1.5} aria-hidden="true" /></div>}
             <span className="absolute top-2.5 left-2.5 inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-espresso shadow-sm backdrop-blur">
                 <Clock3 size={12} strokeWidth={2.5} aria-hidden="true" />{formatDuration(recipe.total_time_minutes)}

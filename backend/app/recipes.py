@@ -1,5 +1,6 @@
 """Recipe persistence and filter endpoints."""
 
+import asyncio
 import json
 from difflib import SequenceMatcher
 from typing import Annotated
@@ -8,13 +9,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from app.auth import get_current_user
 from app.db import get_session
 from app.models import Recipe, Tag, User
 from app.recipe_enums import Appliance, RecipeType
-from app.recipe_schemas import RecipeCreate, RecipeRead, RecipeSummary
+from app.recipe_schemas import RecipeCreate, RecipeListItem, RecipeRead
+from app.thumbnails import make_thumbnail
 
 router = APIRouter(prefix="/recipes", tags=["recipes"])
 
@@ -102,6 +104,7 @@ async def create_recipe(
         description=payload.description,
         recipe_type=payload.recipe_type,
         image_data=payload.image_data,
+        thumbnail_data=await asyncio.to_thread(make_thumbnail, payload.image_data),
         servings=payload.servings,
         total_time_minutes=payload.total_time_minutes,
         difficulty=payload.difficulty,
@@ -122,7 +125,7 @@ async def create_recipe(
     return serialise_recipe(recipe)
 
 
-@router.get("", response_model=list[RecipeSummary])
+@router.get("", response_model=list[RecipeListItem])
 async def list_recipes(
     recipe_type: RecipeType | None = None,
     max_time_minutes: Annotated[int | None, Query(ge=0, le=10_080)] = None,
@@ -131,11 +134,17 @@ async def list_recipes(
     search: str | None = Query(default=None, min_length=1, max_length=100),
     session: AsyncSession = Depends(get_session),
     user: User = Depends(get_current_user),
-) -> list[RecipeSummary]:
+) -> list[RecipeListItem]:
     """List the current user's matching recipes, alphabetically by title, using type, time, macro, and tag filters."""
+    # Only load what the list shows; the heavy columns (full image, ingredients, steps) are skipped.
+    # Searching needs the recipe body, so those columns are loaded only then.
+    columns = [Recipe.title, Recipe.description, Recipe.recipe_type, Recipe.thumbnail_data, Recipe.total_time_minutes,
+               Recipe.difficulty, Recipe.calories, Recipe.protein_g, Recipe.carbs_g, Recipe.fat_g, Recipe.appliance]
+    if search is not None:
+        columns += [Recipe.ingredients, Recipe.instructions, Recipe.details]
     statement = (
         select(Recipe)
-        .options(selectinload(Recipe.tags))
+        .options(load_only(*columns), selectinload(Recipe.tags))
         .where(Recipe.owner_id == user.id)
         .order_by(func.lower(Recipe.title), Recipe.created_at.desc())
     )
@@ -151,7 +160,24 @@ async def list_recipes(
     recipes = (await session.scalars(statement)).unique().all()
     if search is not None:
         recipes = [recipe for recipe in recipes if fuzzy_matches(recipe, search)]
-    return [RecipeSummary(**serialise_recipe(recipe).model_dump()) for recipe in recipes]
+    return [
+        RecipeListItem(
+            id=recipe.id,
+            title=recipe.title,
+            description=recipe.description,
+            recipe_type=recipe.recipe_type,
+            thumbnail_data=recipe.thumbnail_data,
+            total_time_minutes=recipe.total_time_minutes,
+            difficulty=recipe.difficulty,
+            calories=recipe.calories,
+            protein_g=recipe.protein_g,
+            carbs_g=recipe.carbs_g,
+            fat_g=recipe.fat_g,
+            tags=[tag.name for tag in recipe.tags],
+            appliance=recipe.appliance if recipe.appliance in Appliance._value2member_map_ else Appliance.NONE,
+        )
+        for recipe in recipes
+    ]
 
 
 @router.get("/{recipe_id}", response_model=RecipeRead)
@@ -176,6 +202,7 @@ async def update_recipe(
     recipe.description = payload.description
     recipe.recipe_type = payload.recipe_type
     recipe.image_data = payload.image_data
+    recipe.thumbnail_data = await asyncio.to_thread(make_thumbnail, payload.image_data)
     recipe.servings = payload.servings
     recipe.total_time_minutes = payload.total_time_minutes
     recipe.difficulty = payload.difficulty

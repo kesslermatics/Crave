@@ -48,6 +48,8 @@ class Recipe(Base):
     recipe_type: Mapped[RecipeType] = mapped_column(Enum(RecipeType, name="recipe_type"), nullable=False, index=True)
     # image-1 output is stored as a data URL until object storage is introduced.
     image_data: Mapped[str | None] = mapped_column(Text)
+    # Downscaled JPEG data URL derived from image_data; used by list views (see app.thumbnails).
+    thumbnail_data: Mapped[str | None] = mapped_column(Text)
     servings: Mapped[int] = mapped_column(Integer, nullable=False)
     total_time_minutes: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     difficulty: Mapped[Difficulty] = mapped_column(Enum(Difficulty, name="difficulty"), nullable=False, index=True)
