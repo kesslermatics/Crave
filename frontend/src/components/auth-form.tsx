@@ -86,10 +86,10 @@ export function AuthForm({ mode }: AuthFormProps) {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     required
-                    minLength={12}
+                    minLength={isSignup ? 12 : undefined}
                     maxLength={128}
                     className="mt-2 block w-full rounded-xl border border-espresso/15 bg-white px-4 py-3.5 text-base font-medium outline-none transition placeholder:text-bark/50 focus:border-caramel focus:ring-4 focus:ring-saffron/30"
-                    placeholder="Mindestens 12 Zeichen"
+                    placeholder={isSignup ? "Mindestens 12 Zeichen" : "Dein Passwort"}
                 />
             </label>
             {isSignup && <p className="text-xs leading-5 text-bark">Nutze mindestens 12 Zeichen. Dein Konto muss vor der Anmeldung manuell freigeschaltet werden.</p>}

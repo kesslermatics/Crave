@@ -24,8 +24,10 @@ class SignupRequest(BaseModel):
     password: Annotated[str, Field(min_length=12, max_length=128)]
 
 
-class LoginRequest(SignupRequest):
-    pass
+class LoginRequest(BaseModel):
+    # Length rules only apply to new passwords at signup; login just checks the stored hash.
+    email: EmailStr
+    password: Annotated[str, Field(min_length=1, max_length=128)]
 
 
 class SignupResponse(BaseModel):
