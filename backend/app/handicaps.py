@@ -69,8 +69,24 @@ MEDIUM = [
     Handicap("proportionen", "medium", 3, "Proportionen-Wahnsinn", "Alle Mengen sind für eine krumme Personenzahl (z. B. 7) berechnet. Rechnet selbst runter.", "", scope="event", example_text="Für 7 Personen"),
     Handicap("einheiten_lotto", "medium", 3, "Einheiten-Lotto", "Die Zahlen stimmen, aber die Einheiten sind wild unter den Zutaten vertauscht.", "", scope="event", example_text="200 TL Mehl · 2 ml Eier"),
 ]
-CATALOG = {handicap.id: handicap for handicap in HANDICAPS + MEDIUM}
+HEAVY = [
+    Handicap("geteiltes_bewusstsein", "heavy", 5, "Das geteilte Bewusstsein", "Am Kochtag sieht ein Teil von euch nur die Namen, der andere nur Bilder und Mengen. Redet miteinander!", "", scope="event", example_text="„200 g weißes Pulver?“ – „Mehl oder Puderzucker?“"),
+    Handicap("stille_post", "heavy", 5, "Stille Post im Chat", "Nur ein Spieler darf die KI fragen – die Antwort sehen nur die anderen.", "", scope="event", example_text="Fragen hier, Antworten dort."),
+    Handicap("blindverkostung", "heavy", 5, "Die absolute Blindverkostung", "Titel und Bild bleiben am Kochtag gesperrt. Der Reveal kommt erst nach dem Kochen, direkt vor der Jury.", "", scope="event", example_text="Geheimes Gericht · ▇▇▇"),
+    Handicap("memory", "heavy", 5, "Der Memory-Modus", "Nach „Kochen starten“ sind alle Zutaten 3 Minuten sichtbar – dann verschwinden Namen und Mengen.", "", scope="event", example_text="⏱ 3:00 – merkt euch alles."),
+    Handicap("good_cop_bad_cop", "heavy", 5, "Good Cop, Bad Cop", "Jede Chat-Frage bekommt zwei Antworten: eine wahr, eine plausible Lüge.", "", scope="event", example_text="1) Eier trennen. 2) Eier im Ganzen."),
+    Handicap("frankenstein", "heavy", 5, "Die Frankenstein-Mengen", "Am Kochtag sind 2–3 Zutatenpaare zu einem Gemisch mit Gesamtmenge verschmolzen.", "", scope="event", example_text="300 g Mehl-Wasser-Gemisch"),
+    Handicap("phantom", "heavy", 5, "Das Phantom", "Die wichtigste Hauptzutat fehlt am Kochtag komplett in der Liste. Ihr habt sie gekauft – erinnert euch!", "", scope="event", example_text="Soße, Gewürze, Beilage … und?"),
+    Handicap("dreifach_saboteur", "heavy", 5, "Der Dreifach-Saboteur", "Drei plausible, aber falsche Zutaten stehen auf der Liste. Sortiert genau drei aus.", "", scope="event", example_text="Tribal Council: 3 müssen gehen."),
+    Handicap("prozente", "heavy", 5, "Prozentuale Kryptographie", "Gewichts- und Volumenangaben stehen am Kochtag nur als Prozent der Gesamtmenge da.", "", scope="event", example_text="Kartoffeln 80 % · Salz 1,5 %"),
+    Handicap("paralleles_universum", "heavy", 5, "Das parallele Universum", "Das Bild des Gerichts lügt: Es zeigt die Zutaten im völlig falschen Stil (z. B. Auflauf als Dessert).", "", scope="event", example_text="Sieht süß aus. Ist es aber nicht."),
+]
+CATALOG = {handicap.id: handicap for handicap in HANDICAPS + MEDIUM + HEAVY}
 TIP_STYLES = {"telegramm", "philosoph"}  # mutually exclusive: both rewrite every answer
+# Handicaps that would cancel or waste each other: at most one per group.
+EXCLUSIVE = [TIP_STYLES, {"blindverkostung", "paralleles_universum", "bild_embargo"}, {"prozente", "proportionen"}]
+VIEW_ONLY = {"telegramm", "ein_schuss", "philosoph", "bild_embargo", "kategorien_salat", "schwarzes_loch",
+             "geteiltes_bewusstsein", "stille_post", "blindverkostung", "memory", "good_cop_bad_cop", "frankenstein", "phantom", "prozente", "paralleles_universum"}
 
 
 # ---------------------------------------------------------------- disguises
@@ -236,7 +252,7 @@ async def catalog(_: User = Depends(get_current_user)) -> dict[str, Any]:
         "tier": tier, "label": label,
         "items": [{"id": h.id, "cost": h.cost, "title": h.title, "description": h.description, "example_text": h.example_text,
                    "example": public_item({**EXAMPLE, **apply_handicap(EXAMPLE, h, EXAMPLE_TEXT.get(h.text_kind or "", ""), rng)}, None) if h.scope == "ingredient" else None}
-                  for h in HANDICAPS + MEDIUM if h.tier == tier],
+                  for h in HANDICAPS + MEDIUM + HEAVY if h.tier == tier],
     } for tier, label in TIERS]}
 
 
@@ -244,24 +260,22 @@ async def catalog(_: User = Depends(get_current_user)) -> dict[str, Any]:
 
 
 def plan_event_handicaps(budget: int, recipe_count: int, ingredient_count: int, recent: list[str], seed: str) -> list[str]:
-    """Pick event-wide handicaps (3 points each). Enough of them so the light tier can absorb the rest,
-    but leave room for some light ones; variety against recent events; tip styles never stack."""
-    rng = random.Random(f"{seed}-medium")
-    options = [h for h in MEDIUM if h.id != "kategorien_salat" or recipe_count > 1]
-    most = min(budget // 3, len(options) - 1)  # -1: at most one tip style
-    if most <= 0:
-        return []
-    needed = max(0, -(-(budget - ingredient_count) // 3))  # what the light tier can't take
-    count = min(most, max(needed, rng.randint(max(1, most // 2), most)))
+    """Pick event-wide handicaps (3 or 5 points). A random share stays for the light tier (1 point per ingredient),
+    the rest goes into medium/heavy ones; fresh ones first, never two from the same exclusive group."""
+    rng = random.Random(f"{seed}-event")
+    light_share = min(ingredient_count, rng.randint(0, max(0, budget // 3)))
+    remaining = budget - light_share
+    options = [h for h in MEDIUM + HEAVY if h.id != "kategorien_salat" or recipe_count > 1]
     rng.shuffle(options)
-    options.sort(key=lambda h: h.id in recent)  # fresh ones first, stable among themselves
+    options.sort(key=lambda h: h.id in recent)  # fresh first, otherwise random
     chosen: list[str] = []
     for handicap in options:
-        if len(chosen) == count:
-            break
-        if handicap.id in TIP_STYLES and TIP_STYLES & set(chosen):
+        if handicap.cost > remaining:
+            continue
+        if any(handicap.id in group and group & set(chosen) for group in EXCLUSIVE):
             continue
         chosen.append(handicap.id)
+        remaining -= handicap.cost
     return chosen
 
 
@@ -279,6 +293,33 @@ def _nice(amount: float, unit: str) -> float:
     return max(0.5, round(amount * 2) / 2)
 
 
+class Decoys(BaseModel):
+    decoys: list[Decoy] = Field(default_factory=list)
+
+
+async def _add_decoys(recipes: list[dict[str, Any]], display: list[dict[str, Any]], theme: str, count: int) -> list[tuple[int, str]]:
+    """Red herrings: plausible-looking ingredients that would ruin the dish. Recorded in recipe["decoys"] for the jury."""
+    dishes = json.dumps([{"index": i, "title": r["title"], "ingredients": [x["name"] for x in d["ingredients"]]} for i, (r, d) in enumerate(zip(recipes, display))], ensure_ascii=False)
+    prompt = f"""Kochspiel zum Thema "{theme}". Gerichte: {dishes}
+Erfinde genau {count} "Kuckuckseier": Zutaten, die zum Thema und Geschmacksprofil zu passen scheinen, das Gericht aber in Geschmack, Konsistenz oder Struktur ruinieren würden oder völlig deplatziert sind (z. B. Koriander in italienischer Pasta, Rosinen im herzhaften Gratin, Gelatine im Rührteig). Keine davon darf schon in der Liste stehen. Gib plausible Mengen an.
+Antworte nur mit JSON: {{"decoys":[{{"recipe_index":int,"name":str,"amount":float,"unit":str}}]}}"""
+    try:
+        decoys = Decoys.model_validate(await complete_json(prompt, model=get_settings().fast_model, max_tokens=500)).decoys
+    except (OpenAIError, ValueError, ValidationError, json.JSONDecodeError):
+        logger.warning("Decoy ingredients failed", exc_info=True)
+        return []
+    added: list[tuple[int, str]] = []
+    for decoy in decoys[:count]:
+        if not 0 <= decoy.recipe_index < len(display):
+            continue
+        if decoy.name.lower() in {i["name"].lower() for i in display[decoy.recipe_index]["ingredients"]}:
+            continue
+        display[decoy.recipe_index]["ingredients"].append({"name": decoy.name, "amount": decoy.amount, "unit": decoy.unit})
+        recipes[decoy.recipe_index].setdefault("decoys", []).append(decoy.name)
+        added.append((decoy.recipe_index, decoy.name))
+    return added
+
+
 async def build_display(recipes: list[dict[str, Any]], ids: list[str], theme: str, seed: str) -> tuple[list[dict[str, Any]], list[str], dict[str, str]]:
     """Return per-recipe {servings, ingredients} as the players will see them, the handicaps that could actually
     be applied, and a short secret detail per handicap (revealed after the event)."""
@@ -287,20 +328,13 @@ async def build_display(recipes: list[dict[str, Any]], ids: list[str], theme: st
     applied: list[str] = []
     details: dict[str, str] = {}
 
-    if "kuckucksei" in ids:
-        dishes = json.dumps([{"index": i, "title": r["title"], "ingredients": [x["name"] for x in r["ingredients"]]} for i, r in enumerate(recipes)], ensure_ascii=False)
-        prompt = f"""Kochspiel zum Thema "{theme}". Gerichte: {dishes}
-Wähle für eines der Gerichte ein "Kuckucksei": eine Zutat, die zum Thema und Geschmacksprofil zu passen scheint, das Gericht aber ruinieren würde oder völlig deplatziert ist (z. B. Koriander in italienischer Pasta, Rosinen im herzhaften Gratin). Sie darf noch nicht in der Liste stehen. Gib eine plausible Menge an.
-Antworte nur mit JSON: {{"recipe_index":int,"name":str,"amount":float,"unit":str}}"""
-        try:
-            decoy = Decoy.model_validate(await complete_json(prompt, model=get_settings().fast_model, max_tokens=300))
-            if 0 <= decoy.recipe_index < len(display) and decoy.name.lower() not in {i["name"].lower() for i in display[decoy.recipe_index]["ingredients"]}:
-                display[decoy.recipe_index]["ingredients"].append({"name": decoy.name, "amount": decoy.amount, "unit": decoy.unit})
-                recipes[decoy.recipe_index]["decoy"] = decoy.name
-                applied.append("kuckucksei")
-                details["kuckucksei"] = f"{decoy.name} gehörte nicht in „{recipes[decoy.recipe_index]['title']}“."
-        except (OpenAIError, ValueError, ValidationError, json.JSONDecodeError):
-            logger.warning("Decoy ingredient failed", exc_info=True)
+    for handicap_id, count in (("kuckucksei", 1), ("dreifach_saboteur", 3)):
+        if handicap_id not in ids:
+            continue
+        added = await _add_decoys(recipes, display, theme, count)
+        if added:
+            applied.append(handicap_id)
+            details[handicap_id] = "Falsche Zutaten: " + ", ".join(f"{name} (in „{recipes[index]['title']}“)" for index, name in added)
 
     if "proportionen" in ids:
         targets = []
@@ -351,10 +385,68 @@ Antworte nur mit JSON: {{"recipe_index":int,"name":str,"amount":float,"unit":str
             applied.append("einheiten_lotto")
             details["einheiten_lotto"] = "Die Einheiten waren unter den Zutaten gemischt."
 
-    for handicap_id in ids:  # no ingredient changes needed (applied in UI, tips, or later in the pipeline)
-        if handicap_id in ("telegramm", "ein_schuss", "philosoph", "bild_embargo", "kategorien_salat", "schwarzes_loch"):
+    for handicap_id in ids:  # no ingredient changes needed (applied in UI, tips, on the cook day or for images)
+        if handicap_id in VIEW_ONLY:
             applied.append(handicap_id)
+    for index, entry in enumerate(display):  # pre-compute the secret notes of the cook-day transformations
+        _, notes = cook_view(entry["ingredients"], set(applied), f"{seed}-{index}")
+        for key, note in notes.items():
+            details[key] = f"{details[key]} {note}" if key in details else note
     return display, applied, details
+
+
+def _weight(item: dict[str, Any]) -> float | None:
+    unit = str(item.get("unit", "")).strip().lower()
+    amount = item.get("amount")
+    if amount is None or unit not in METRIC_UNITS:
+        return None
+    return float(amount) * (1000 if unit in ("kg", "kilogramm", "l", "liter") else 1)
+
+
+def cook_view(items: list[dict[str, Any]], effects: set[str], seed: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Cook-day transformations of one dish's ingredient list (deterministic per seed). Returns the list and
+    secret notes for the final reveal."""
+    rng = random.Random(f"{seed}-cook")
+    items = [dict(item) for item in items]
+    notes: dict[str, str] = {}
+    if "phantom" in effects and len(items) > 2:
+        star = max(range(len(items)), key=lambda i: (_weight(items[i]) or 0, float(items[i].get("amount") or 0)))
+        notes["phantom"] = f"Das Phantom: {items[star]['name']}."
+        items.pop(star)
+    if "frankenstein" in effects and len(items) >= 4:
+        order = list(range(len(items)))
+        rng.shuffle(order)
+        groups: list[tuple[int, int]] = []
+        used: set[int] = set()
+        for a in order:  # pair up ingredients that share a unit family (g/ml or count units)
+            if a in used:
+                continue
+            for b in order:
+                if b == a or b in used:
+                    continue
+                if (_weight(items[a]) is None) == (_weight(items[b]) is None):
+                    groups.append((a, b)); used |= {a, b}
+                    break
+            if len(groups) == min(3, max(2, len(items) // 4)):
+                break
+        fused = []
+        for a, b in groups:
+            first, second = items[a], items[b]
+            amount = (_weight(first) or float(first.get("amount") or 0)) + (_weight(second) or float(second.get("amount") or 0)) if None not in (first.get("amount"), second.get("amount")) else None
+            unit = "g" if _weight(first) is not None else first["unit"]
+            fused.append({"name": f"{first['name']}-{second['name']}-Gemisch", "amount": round(amount, 2) if amount is not None else None, "unit": unit})
+        if groups:
+            notes["frankenstein"] = "Verschmolzen: " + ", ".join(f"{items[a]['name']} ({items[a]['amount']} {items[a]['unit']}) + {items[b]['name']} ({items[b]['amount']} {items[b]['unit']})" for a, b in groups) + "."
+            items = [item for i, item in enumerate(items) if i not in used] + fused
+            rng.shuffle(items)
+    if "prozente" in effects:
+        weights = [_weight(item) for item in items]
+        total = sum(w for w in weights if w)
+        if total > 0:
+            for item, weight in zip(items, weights):
+                if weight is not None:
+                    item["amount"], item["unit"] = round(weight / total * 100, 1), "%"
+    return items, notes
 
 
 def black_hole_pick(indices: list[int], ingredients: list[dict[str, Any]], taken: set[int]) -> int | None:
@@ -378,3 +470,12 @@ def tip_rules(effects: set[str]) -> tuple[str, int, bool]:
 
 def three_words(text: str) -> str:
     return " ".join(text.split()[:3])
+
+
+class TwoTips(BaseModel):
+    truth: str = Field(min_length=1, max_length=1_500)
+    lie: str = Field(min_length=1, max_length=1_500)
+
+
+GOOD_COP_RULE = ('Erzeuge ZWEI Antworten im gleichen Stil und gleicher Länge: "truth" ist korrekt und hilfreich, '
+                 '"lie" ist hochplausibel, aber falsch (würde das Gericht verschlechtern). Antworte nur mit JSON: {"truth": str, "lie": str}')

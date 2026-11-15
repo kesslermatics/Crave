@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowUp, Gift, Lightbulb, Lock, Sparkles, Trash2, X } from "lucide-react";
-import { DropItem, EventDetail as EventData, eventApi, formatAmount, formatDay } from "@/lib/events";
+import { DropItem, EventDetail as EventData, EventIngredient, eventApi, formatAmount, formatDay } from "@/lib/events";
 import { EventJury } from "@/components/event-jury";
 import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
 import { FormattedMessage } from "@/components/formatted-message";
@@ -14,6 +14,30 @@ import { LoadingIndicator } from "@/components/loading-indicator";
 type Revealed = { day_index: number; items: DropItem[]; teaser: string | null };
 
 const IngredientPicture = HandicapPicture;
+
+/** Cook-day ingredient rows, honouring the "geteiltes Bewusstsein" and memory masks. */
+function CookIngredients({ items }: { items: EventIngredient[] }) {
+    return <ul className="mt-5 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">{items.map((ingredient, i) => <li key={i} className={`flex items-center justify-between gap-3 border-b border-espresso/5 py-1.5 ${ingredient.mask === "memory" ? "blur-sm select-none" : ""}`}>
+        {ingredient.mask === "name"
+            ? <span className="flex min-w-0 items-center gap-3">{ingredient.image_data ? <img src={ingredient.image_data} alt="Unbekannte Zutat" className="h-12 w-12 rounded-xl object-cover" /> : <span className="grid h-12 w-12 place-items-center rounded-xl bg-saffron/25 text-caramel" aria-hidden="true"><Gift size={18} /></span>}<span className="sr-only">Zutat ohne Namen</span></span>
+            : <span className="min-w-0 break-words text-espresso">{ingredient.name}</span>}
+        {ingredient.mask !== "amount" && <span className="shrink-0 font-semibold text-caramel">{ingredient.mask === "memory" ? "▇▇" : formatAmount(ingredient.amount, ingredient.unit)}</span>}
+    </li>)}</ul>;
+}
+
+function MemoryTimer({ startedAt, seconds, onExpire }: { startedAt: string; seconds: number; onExpire: () => void }) {
+    const [left, setLeft] = useState(() => Math.max(0, seconds - (Date.now() - Date.parse(startedAt)) / 1000));
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            const remaining = Math.max(0, seconds - (Date.now() - Date.parse(startedAt)) / 1000);
+            setLeft(remaining);
+            if (remaining <= 0) { window.clearInterval(timer); onExpire(); }
+        }, 500);
+        return () => window.clearInterval(timer);
+    }, [startedAt, seconds, onExpire]);
+    const whole = Math.ceil(left);
+    return <p role="timer" aria-live="off" className="sticky top-20 z-10 mb-6 rounded-2xl bg-red-600 px-4 py-3 text-center text-lg font-bold text-white shadow-lg">⏱ {Math.floor(whole / 60)}:{String(whole % 60).padStart(2, "0")} – merkt euch alles!</p>;
+}
 
 function HandicapBadge({ item }: { item: DropItem }) {
     return item.handicap ? <span className="mt-1 inline-block rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-700">Handicap: {item.handicap.title}</span> : null;
@@ -68,9 +92,11 @@ const TIP_NOTES: Record<string, string> = {
     telegramm: "Telegramm-Stil: höchstens 3 Wörter pro Antwort.",
     philosoph: "Küchen-Philosoph: Antworten kommen nur als Metapher oder Rätsel.",
     ein_schuss: "Ein-Schuss-Joker: Ihr habt genau eine Frage – danach ist der Chat zu.",
+    good_cop_bad_cop: "Good Cop, Bad Cop: Jede Frage bekommt zwei Antworten – eine davon lügt.",
+    stille_post: "Stille Post: Nur einer darf fragen, die Antworten sehen nur die anderen.",
 };
 
-function TipChat({ eventId, tips, tipCount, onTip, readOnly = false, effects = [] }: { eventId: string; tips: EventData["tips"]; tipCount: number; onTip: () => void; readOnly?: boolean; effects?: string[] }) {
+function TipChat({ eventId, tips, tipCount, onTip, readOnly = false, effects = [], askerEmail = "" }: { eventId: string; tips: EventData["tips"]; tipCount: number; onTip: () => void; readOnly?: boolean; effects?: string[]; askerEmail?: string }) {
     const [question, setQuestion] = useState("");
     const [sending, setSending] = useState(false);
     const [error, setError] = useState("");
@@ -91,10 +117,10 @@ function TipChat({ eventId, tips, tipCount, onTip, readOnly = false, effects = [
             <span className="rounded-full bg-espresso px-3 py-1 text-xs font-bold text-white">{tipCount} {tipCount === 1 ? "Tipp" : "Tipps"} genutzt</span>
         </div>
         <p className="mt-1 text-sm text-bark">Jede Antwort zählt als Tipp für euer ganzes Event.</p>
-        {effects.filter((effect) => TIP_NOTES[effect]).map((effect) => <p key={effect} className="mt-2 rounded-2xl bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700">{TIP_NOTES[effect]}</p>)}
+        {effects.filter((effect) => TIP_NOTES[effect]).map((effect) => <p key={effect} className="mt-2 rounded-2xl bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700">{TIP_NOTES[effect]}{effect === "stille_post" && askerEmail && ` Fragen darf: ${askerEmail}.`}</p>)}
         <div className="mt-6 space-y-4" aria-live="polite">{tips.map((tip) => <div key={tip.created_at} className="space-y-2">
             <p className="ml-auto max-w-[85%] rounded-[1.25rem] rounded-br-md bg-espresso px-4 py-2.5 text-sm text-white sm:max-w-md"><span className="block text-[10px] font-bold opacity-70">{tip.email}</span>{tip.question}</p>
-            <div className="max-w-[85%] rounded-[1.25rem] rounded-bl-md bg-white px-4 py-2.5 text-sm leading-6 text-espresso shadow-[0_1px_2px_rgba(66,52,33,0.06)] sm:max-w-md"><FormattedMessage text={tip.answer} /></div>
+            <div className="max-w-[85%] rounded-[1.25rem] rounded-bl-md bg-white px-4 py-2.5 text-sm leading-6 text-espresso shadow-[0_1px_2px_rgba(66,52,33,0.06)] sm:max-w-md"><FormattedMessage text={tip.answer} />{tip.truth && <p className="mt-2 text-xs font-bold text-caramel">Wahr war Antwort {tip.truth}.</p>}</div>
         </div>)}
             {sending && <LoadingIndicator label="Crave überlegt einen Hinweis…" />}
         </div>
@@ -112,6 +138,13 @@ export function EventDetail({ eventId }: { eventId: string }) {
     const [opening, setOpening] = useState<number | null>(null);
     const [revealed, setRevealed] = useState<Revealed | null>(null);
     const [deleting, setDeleting] = useState(false);
+    const [gameBusy, setGameBusy] = useState(false);
+
+    async function gameAction(action: "memory-start" | "blind-reveal") {
+        setGameBusy(true); setError("");
+        try { await eventApi(`/events/${eventId}/game/${action}`, { method: "POST" }); await load(); }
+        catch (caught) { setError((caught as Error).message); } finally { setGameBusy(false); }
+    }
     const router = useRouter();
 
     async function removeEvent() {
@@ -143,7 +176,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
 
     const myItems = event.drops.flatMap((drop) => drop.items ?? []);
     const embargo = event.effects.includes("bild_embargo") && event.phase !== "finished";
-    const activeMedium = event.handicaps.filter((entry) => entry.tier === "medium");
+    const activeMedium = event.handicaps.filter((entry) => entry.tier !== "light");
     const daysLeft = Math.round((Date.parse(event.cook_date) - Date.parse(event.today)) / 86_400_000);
 
     return <main className="mx-auto max-w-3xl px-5 pt-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-8">
@@ -163,10 +196,16 @@ export function EventDetail({ eventId }: { eventId: string }) {
                 <h3 id="active-handicaps" className="text-sm font-semibold text-espresso">Heute im Spiel</h3>
                 <ul className="mt-2 space-y-2 text-sm text-bark">{activeMedium.map((entry) => <li key={entry.handicap}><span className="font-semibold text-red-700">{entry.title}</span>{entry.detail ? ` · ${entry.detail}` : ""}</li>)}</ul>
             </section>}
+            {event.game.memory_phase === "waiting" && <div className="mb-8 rounded-3xl bg-espresso p-6 text-center text-white">
+                <p className="text-sm">Memory-Modus: Nach dem Start habt ihr {event.game.memory_seconds / 60} Minuten, um euch alle Zutaten zu merken.</p>
+                <button type="button" disabled={gameBusy} onClick={() => gameAction("memory-start")} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-bold text-espresso disabled:opacity-60 sm:w-auto">Kochen starten</button>
+            </div>}
+            {event.game.memory_phase === "visible" && event.game.memory_started_at && <MemoryTimer startedAt={event.game.memory_started_at} seconds={event.game.memory_seconds} onExpire={load} />}
+            {event.effects.includes("geteiltes_bewusstsein") && event.phase === "cooking" && <p className="mb-6 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">Geteiltes Bewusstsein: Du siehst {event.game.role === "A" ? "nur die Namen" : "nur Bilder und Mengen"}. Den Rest kennt dein Gegenüber.</p>}
             {event.mixed_ingredients && <section className="-mx-2 mb-8 rounded-[2rem] bg-white p-5 shadow-[0_12px_40px_rgba(66,52,33,0.12)] sm:mx-0 sm:p-8" aria-labelledby="mixed-title">
                 <h3 id="mixed-title" className="font-semibold text-espresso">Alle Zutaten – bunt gemischt</h3>
                 <p className="mt-1 text-xs text-bark">Kategorien-Salat: Welche Zutat gehört in welches Gericht?</p>
-                <ul className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">{event.mixed_ingredients.map((ingredient, i) => <li key={i} className="flex justify-between gap-3 border-b border-espresso/5 py-1.5"><span className="min-w-0 break-words text-espresso">{ingredient.name}</span><span className="shrink-0 font-semibold text-caramel">{formatAmount(ingredient.amount, ingredient.unit)}</span></li>)}</ul>
+                <CookIngredients items={event.mixed_ingredients} />
             </section>}
             {event.recipes.map((recipe, index) => <motion.article key={recipe.title} initial={{ opacity: 0, y: 40, scale: 0.92 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.2 + index * 0.5, type: "spring", stiffness: 120 }} className="-mx-2 mb-8 overflow-hidden rounded-[2rem] bg-white sm:mx-0 shadow-[0_12px_40px_rgba(66,52,33,0.12)]">
                 {recipe.image_data && <div className="overflow-hidden"><img src={recipe.image_data} alt={embargo ? "Verschwommenes Bild des Gerichts" : recipe.title} className={`aspect-square w-full object-cover sm:aspect-[16/10] ${embargo ? "scale-125 blur-[25px]" : ""}`} /></div>}
@@ -175,7 +214,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
                     <h3 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso sm:text-3xl">{recipe.title}</h3>
                     <p className="mt-3 text-sm leading-6 text-bark">{recipe.description}</p>
                     <p className="mt-3 text-xs font-semibold text-bark">{recipe.servings} Portionen · ca. {recipe.total_time_minutes} Min.</p>
-                    {recipe.ingredients.length > 0 && <ul className="mt-5 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">{recipe.ingredients.map((ingredient, i) => <li key={i} className="flex justify-between gap-3 border-b border-espresso/5 py-1.5"><span className="min-w-0 break-words text-espresso">{ingredient.name}</span><span className="shrink-0 font-semibold text-caramel">{formatAmount(ingredient.amount, ingredient.unit)}</span></li>)}</ul>}
+                    {recipe.ingredients.length > 0 && <CookIngredients items={recipe.ingredients} />}
                     {recipe.instructions.length > 0
                         ? <details className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso"><summary className="min-h-8 cursor-pointer font-semibold">Originalzubereitung</summary><ol className="mt-2 list-decimal space-y-2 pl-5 leading-6">{recipe.instructions.map((step) => <li key={step}>{step}</li>)}</ol></details>
                         : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
@@ -185,8 +224,11 @@ export function EventDetail({ eventId }: { eventId: string }) {
                 <h3 id="handicaps-title" className="text-sm font-semibold text-espresso">Aufgelöst: Zutaten-Handicaps</h3>
                 <ul className="mt-2 space-y-1 text-sm text-bark">{event.handicaps.filter((entry) => entry.tier === "light").map((entry, index) => <li key={index}><span className="font-semibold text-espresso">{entry.ingredient}</span> · {entry.title}</li>)}</ul>
             </section>}
-            {(event.phase === "cooking" || event.tips.length > 0) && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={event.phase !== "cooking" || (event.effects.includes("ein_schuss") && event.tip_count >= 1)} effects={event.effects} />}
-            <EventJury event={event} onChange={load} />
+            {(event.phase === "cooking" || event.tips.length > 0) && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={event.phase !== "cooking" || !event.game.can_ask || (event.effects.includes("ein_schuss") && event.tip_count >= 1)} effects={event.effects} askerEmail={event.game.asker_email} />}
+            {!event.game.blind_revealed && event.phase === "cooking" ? <section className="mt-14 rounded-3xl bg-espresso p-6 text-center text-white" aria-label="Blindverkostung">
+                <p className="text-sm">Blindverkostung: Erst wenn ihr fertig gekocht habt, wird aufgedeckt, was es sein sollte. Danach geht es zur Jury.</p>
+                <button type="button" disabled={gameBusy} onClick={() => { if (window.confirm("Fertig gekocht? Dann jetzt aufdecken.")) void gameAction("blind-reveal"); }} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-bold text-espresso disabled:opacity-60 sm:w-auto">Gericht aufdecken</button>
+            </section> : <EventJury event={event} onChange={load} />}
         </section>}
 
         {event.status === "active" && <>

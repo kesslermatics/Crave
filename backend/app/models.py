@@ -151,6 +151,8 @@ class Event(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # [{handicap, title, ingredient}] actually applied to this event (penalty_spent points).
     handicaps: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    # Cook-day state of interactive handicaps, e.g. {"blind_revealed": true, "memory_started_at": "…"}.
+    game_state: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     participants: Mapped[list[User]] = relationship(secondary=event_participants, lazy="selectin")
 
@@ -191,6 +193,8 @@ class EventTip(Base):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     question: Mapped[str] = mapped_column(Text, nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
+    # Good Cop, Bad Cop: {"truth": 1|2}, revealed after the event.
+    meta: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

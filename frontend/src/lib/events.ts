@@ -2,7 +2,7 @@ import { apiUrl } from "@/lib/api";
 
 export type DropItem = { name: string; amount: number | null; unit: string; image_data: string | null; handicap: { id: string; title: string } | null };
 export type Drop = { day_index: number; date: string; state: "locked" | "available" | "revealed"; items?: DropItem[]; teaser?: string | null };
-export type EventIngredient = { name: string; amount: number | null; unit: string };
+export type EventIngredient = { name: string; amount: number | null; unit: string; mask?: "amount" | "name" | "memory"; image_data?: string | null };
 export type EventRecipe = { id: string; instructions: string[]; category: string; title: string; description: string; image_data: string | null; servings: number; total_time_minutes: number; difficulty: string; ingredients: EventIngredient[] };
 export type JuryVerdict = {
     recipes: { recipe_id: string; title: string; verdict: string; penalty: number; categories: { name: string; penalty: number; comment: string }[] }[];
@@ -10,10 +10,11 @@ export type JuryVerdict = {
 };
 export type EventSubmission = { email: string; is_me: boolean; recipe_id: string; taste_rating: number | null; image_data: string | null };
 export type EventPhase = "cooking" | "judging" | "judged" | "finished";
-export type EventTip = { email: string; question: string; answer: string; created_at: string };
+export type EventTip = { email: string; question: string; answer: string; truth: number | null; created_at: string };
 export type EventDetail = {
     id: string; title: string; theme: string; status: "generating" | "active" | "failed"; progress: string; images_pending: boolean; is_creator: boolean;
     handicap_count: number; penalty_spent: number; handicaps: { handicap: string; title: string; tier: "light" | "medium"; ingredient?: string; detail?: string }[]; effects: string[]; mixed_ingredients: EventIngredient[] | null;
+    game: { blind_revealed: boolean; memory_phase: "waiting" | "visible" | "expired" | null; memory_started_at: string | null; memory_seconds: number; role: "A" | "B"; can_ask: boolean; asker_email: string };
     phase: EventPhase; verdict: JuryVerdict | null; jury_error: string | null; submissions: EventSubmission[]; penalty_earned: number; participant_count: number; categories: string[];
     start_date: string; cook_date: string; today: string; days_total: number; is_cook_day: boolean; pantry: string[];
     drops: Drop[]; stats: { email: string; is_me: boolean; revealed: number; tips: number }[]; tip_count: number; recipes: EventRecipe[]; tips: EventTip[];

@@ -55,8 +55,10 @@ async def initialize_database() -> None:
             "penalty_spent INTEGER NOT NULL DEFAULT 0",
             "finished_at TIMESTAMPTZ",
             "handicaps JSONB NOT NULL DEFAULT '[]'::jsonb",
+            "game_state JSONB NOT NULL DEFAULT '{}'::jsonb",
         ):
             await connection.execute(text(f"ALTER TABLE events ADD COLUMN IF NOT EXISTS {column}"))
+        await connection.execute(text("ALTER TABLE event_tips ADD COLUMN IF NOT EXISTS meta JSONB"))
 
     await backfill_thumbnails()
 

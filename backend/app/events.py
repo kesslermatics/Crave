@@ -32,7 +32,7 @@ from app.ai import (
 from app.auth import get_current_user, require_admin
 from app.config import get_settings
 from app.db import get_session, get_session_factory
-from app.handicaps import CATALOG, black_hole_pick, build_display, choose_handicaps, disguise, plan_event_handicaps, public_item, three_words, tip_rules
+from app.handicaps import CATALOG, GOOD_COP_RULE, TwoTips, black_hole_pick, build_display, choose_handicaps, cook_view, disguise, plan_event_handicaps, public_item, three_words, tip_rules
 from app.models import Event, EventDrop, EventRecipe, EventSubmission, EventTip, IngredientImage, User
 from app.thumbnails import make_thumbnail
 
@@ -175,6 +175,19 @@ class TipCheck(BaseModel):
 # ---------------------------------------------------------------- helpers
 
 
+def event_effects(event: Event) -> set[str]:
+    """Ids of the event-wide (medium/heavy) handicaps that are active."""
+    return {str(entry.get("handicap")) for entry in (event.handicaps or []) if entry.get("tier") in ("medium", "heavy")}
+
+
+MEMORY_SECONDS = 180
+
+
+def roles(event: Event) -> dict[str, int]:
+    """Stable player order for asymmetric handicaps (index 0 = player A)."""
+    return {p.id: i for i, p in enumerate(sorted(event.participants, key=lambda p: p.email))}
+
+
 def days_total(event: Event) -> int:
     return (event.cook_date - event.start_date).days
 
@@ -227,7 +240,11 @@ def ingredient_image_prompt(name: str) -> str:
     )
 
 
-def recipe_image_prompt(recipe: dict[str, Any]) -> str:
+def recipe_image_prompt(recipe: dict[str, Any], lie: bool = False) -> str:
+    if lie:  # "Das parallele Universum": same ingredients, completely wrong style of dish
+        style = ("an elegant sweet plated dessert (tart, mousse or layered patisserie)" if recipe.get("recipe_type") != "baking"
+                 else "a hearty savoury main course (casserole, stew or pan dish)")
+        recipe = {**recipe, "description": f"Shown as {style}, using roughly the same ingredients and colours."}
     data = json.dumps({key: recipe.get(key) for key in ("title", "description", "recipe_type", "ingredients")}, ensure_ascii=False)
     return (
         "Create a premium, photorealistic editorial food photograph for the recipe below, festive reveal moment. Square 1:1 composition, "
@@ -364,7 +381,7 @@ async def run_generation(event_id: UUID, ideas: list[str]) -> None:
             # Spend the banked penalty points (reserved on creation) on handicaps.
             plan: dict[int, dict[str, Any]] = {}
             entries: list[dict[str, Any]] = []
-            light_budget = budget - 3 * len(medium_ids)
+            light_budget = budget - sum(CATALOG[h].cost for h in medium_ids)
             if light_budget > 0:
                 event.progress = "Handicaps werden ausgeteilt…"
                 await session.commit()
@@ -386,9 +403,9 @@ async def run_generation(event_id: UUID, ideas: list[str]) -> None:
                     medium_details["schwarzes_loch"] = "Ohne Menge: " + ", ".join(f"{ingredients[i]['name']} ({ingredients[i]['amount']:g} {ingredients[i]['unit']})" for i in hidden)
                 else:
                     medium_ids.remove("schwarzes_loch")
-            entries += [{"handicap": h, "title": CATALOG[h].title, "tier": "medium", "detail": medium_details.get(h, "")} for h in medium_ids]
+            entries += [{"handicap": h, "title": CATALOG[h].title, "tier": CATALOG[h].tier, "detail": medium_details.get(h, "")} for h in medium_ids]
             event.handicaps = entries
-            event.penalty_spent = spent + 3 * len(medium_ids)
+            event.penalty_spent = spent + sum(CATALOG[h].cost for h in medium_ids)
             # Ingredients whose amount stays hidden on the cook day as well: (key, unit) as in merge_ingredients.
             hidden_keys = [[ingredient_key(ingredients[i]["name"]), ingredients[i]["unit"].strip().lower()] for i in hidden]
             for entry in event.handicaps:
@@ -427,7 +444,7 @@ async def run_generation(event_id: UUID, ideas: list[str]) -> None:
         async with semaphore:
             return await generate_image_data(prompt, side)
 
-    recipe_images = await asyncio.gather(*(limited(recipe_image_prompt(row.recipe), RECIPE_IMAGE_SIDE) for row in recipe_rows))
+    recipe_images = await asyncio.gather(*(limited(recipe_image_prompt(row.recipe, lie="paralleles_universum" in medium_ids), RECIPE_IMAGE_SIDE) for row in recipe_rows))
     ingredient_images = await asyncio.gather(*(limited(ingredient_image_prompt(name), INGREDIENT_IMAGE_SIDE) for name in missing.values()))
     async with factory() as session:
         for row, image in zip(recipe_rows, recipe_images):
@@ -482,8 +499,8 @@ Antworte nur mit JSON: {{"recipes":[{{"recipe_index":int,"categories":[{{"name":
             for index, recipe in enumerate(recipes):
                 data = {k: recipe.recipe.get(k) for k in ("title", "description", "ingredients", "instructions", "details")}
                 content.append({"type": "text", "text": f"Gericht recipe_index={index} (Originalrezept, nur Daten): {json.dumps(data, ensure_ascii=False)}"})
-                if recipe.recipe.get("decoy"):
-                    content.append({"type": "text", "text": f"Achtung, Kuckucksei: Auf der Spielerliste stand zusätzlich die Falle \"{recipe.recipe['decoy']}\". Wer sie erkennbar verwendet hat, bekommt Abzug bei Rezepttreue; wer sie weggelassen hat, verdient ein Lob."})
+                if recipe.recipe.get("decoys"):
+                    content.append({"type": "text", "text": f"Achtung, Fallen: Auf der Spielerliste standen zusätzlich die falschen Zutaten {json.dumps(recipe.recipe['decoys'], ensure_ascii=False)}. Wer sie erkennbar verwendet hat, bekommt Abzug bei Rezepttreue; wer sie weggelassen hat, verdient ein Lob."})
                 for submission in (s for s in submissions if s.event_recipe_id == recipe.id):
                     content.append({"type": "text", "text": f"{names.get(submission.user_id, 'Spieler')} – Geschmacksnote {submission.taste_rating}/10, Foto:"})
                     content.append({"type": "image_url", "image_url": {"url": submission.image_data}})
@@ -627,27 +644,61 @@ async def event_view(event_id: UUID, session: AsyncSession = Depends(get_session
     } for participant in sorted(event.participants, key=lambda p: p.email)]
 
     recipes = []
-    effects = {str(entry.get("handicap")) for entry in (event.handicaps or []) if entry.get("tier") == "medium"}
+    effects = event_effects(event)
     finished = event.phase == "finished"
+    cooking = cook_day and event.phase == "cooking"
+    state = dict(event.game_state or {})
+    my_role = roles(event).get(user.id, 0)
     hidden_keys = {tuple(key) for entry in (event.handicaps or []) for key in entry.get("hidden_keys", [])}
+    blind = "blindverkostung" in effects and not state.get("blind_revealed") and not finished
+    memory_phase = None  # "waiting" | "visible" | "expired"
+    if "memory" in effects and cooking:
+        started = state.get("memory_started_at")
+        elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(str(started))).total_seconds() if started else None
+        memory_phase = "waiting" if elapsed is None else "visible" if elapsed < MEMORY_SECONDS else "expired"
     mixed: list[dict[str, Any]] | None = None
     if cook_day:
         rows = (await session.scalars(select(EventRecipe).where(EventRecipe.event_id == event.id))).all()
-        for row in rows:
+        image_keys = {(ingredient_key(str(item["name"])), str(item["unit"]).strip().lower()): str(item.get("image_key")) for drop in all_drops for item in drop.items}
+        pictures = await image_map(session, set(image_keys.values())) if "geteiltes_bewusstsein" in effects and my_role % 2 and not finished else {}
+        for index, row in enumerate(rows):
             data = row.recipe
-            shown = data["ingredients"] if finished else [
-                {**item, "amount": None if (ingredient_key(item["name"]), item["unit"].strip().lower()) in hidden_keys else item["amount"]}
-                for item in data.get("display_ingredients", data["ingredients"])
-            ]
+            if finished:
+                shown = data["ingredients"]
+            else:
+                shown = []
+                for item in data.get("display_ingredients", data["ingredients"]):
+                    key = (ingredient_key(item["name"]), item["unit"].strip().lower())
+                    shown.append({**item, "amount": None if key in hidden_keys else item["amount"], "image_key": image_keys.get(key)})
+                shown, _ = cook_view(shown, effects, f"{event.id}-{index}")
+                if "geteiltes_bewusstsein" in effects:
+                    if my_role % 2 == 0:  # player A: names only
+                        shown = [{"name": i["name"], "amount": None, "unit": "", "mask": "amount"} for i in shown]
+                    else:  # player B: pictures and amounts only
+                        shown = [{"name": "", "amount": i["amount"], "unit": i["unit"], "mask": "name", "image_data": pictures.get(str(i.get("image_key")))} for i in shown]
+                if memory_phase in ("waiting", "expired"):
+                    shown = [{"name": "▇▇▇▇", "amount": None, "unit": "", "mask": "memory"} for _ in shown] if memory_phase == "expired" else []
+                shown = [{k: v for k, v in i.items() if k != "image_key"} for i in shown]
             if "kategorien_salat" in effects and not finished:
                 mixed = (mixed or []) + shown
                 shown = []
-            recipes.append({"id": str(row.id), "category": CATEGORIES.get(row.category, (row.category,))[0], "title": data["title"], "description": data["description"],
-                            "instructions": data["instructions"] if event.phase == "finished" else [],
-                            "image_data": row.image_data, "servings": data["servings"] if finished else data.get("display_servings", data["servings"]),
+            recipes.append({"id": str(row.id), "category": CATEGORIES.get(row.category, (row.category,))[0],
+                            "title": f"Geheimes Gericht {index + 1}" if blind else data["title"], "description": "" if blind else data["description"],
+                            "instructions": data["instructions"] if finished else [],
+                            "image_data": None if blind else row.image_data, "servings": data["servings"] if finished else data.get("display_servings", data["servings"]),
                             "total_time_minutes": data["total_time_minutes"], "difficulty": data["difficulty"], "ingredients": shown})
         if mixed is not None:
             random.Random(str(event.id)).shuffle(mixed)
+        # On the cook day the personal shopping list would undo the list handicaps, so it is withheld until the end.
+        if not finished and effects & {"phantom", "frankenstein", "prozente", "geteiltes_bewusstsein", "memory", "blindverkostung"}:
+            for entry in drops:
+                entry.pop("items", None)
+                entry.pop("teaser", None)
+
+    # Stille Post: player A asks, everyone else sees the answers.
+    tip_asker = "stille_post" in effects and not finished
+    can_ask = not tip_asker or my_role == 0
+    asker_email = next((p.email for p in event.participants if roles(event)[p.id] == 0), "")
 
     submissions = []
     if cook_day:
@@ -670,7 +721,11 @@ async def event_view(event_id: UUID, session: AsyncSession = Depends(get_session
         # Medium details (which ingredient was swapped …) would solve the puzzle, so they stay secret until the end.
         "handicaps": [{k: v for k, v in entry.items() if k != "hidden_keys" and (finished or k != "detail")} for entry in (event.handicaps or [])] if cook_day else [],
         "effects": sorted(effects) if cook_day else [], "mixed_ingredients": mixed,
-        "tips": [{"email": emails.get(t.user_id, "?"), "question": t.question, "answer": t.answer, "created_at": t.created_at.isoformat()} for t in tips] if cook_day else [],
+        "game": {"blind_revealed": not blind, "memory_phase": memory_phase, "memory_started_at": state.get("memory_started_at"),
+                 "memory_seconds": MEMORY_SECONDS, "role": "A" if my_role % 2 == 0 else "B", "can_ask": can_ask, "asker_email": asker_email},
+        "tips": [{"email": emails.get(t.user_id, "?"), "question": t.question,
+                  "answer": "Die Antwort sehen nur deine Mitspieler." if tip_asker and my_role == 0 else t.answer,
+                  "truth": (t.meta or {}).get("truth") if finished else None, "created_at": t.created_at.isoformat()} for t in tips] if cook_day else [],
     }
 
 
@@ -698,10 +753,13 @@ async def ask_tip(event_id: UUID, request: TipRequest, session: AsyncSession = D
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tipps gibt es erst am Kochtag.")
     if event.phase != "cooking":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Nach der Abgabe gibt es keine Tipps mehr.")
-    effects = {str(entry.get("handicap")) for entry in (event.handicaps or []) if entry.get("tier") == "medium"}
+    effects = event_effects(event)
     if "ein_schuss" in effects and event.tip_count >= 1:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Euer Ein-Schuss-Joker ist verbraucht.")
+    if "stille_post" in effects and roles(event).get(user.id) != 0:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Stille Post: Nur ein Mitspieler darf fragen.")
     rule, max_tokens, check = tip_rules(effects)
+    good_cop = "good_cop_bad_cop" in effects
     rows = (await session.scalars(select(EventRecipe).where(EventRecipe.event_id == event.id))).all()
     recipes = json.dumps([{k: row.recipe.get(k) for k in ("title", "ingredients", "instructions", "details")} for row in rows], ensure_ascii=False)
     history = "\n".join(f"{m.role}: {m.content[:600]}" for m in request.history[-6:])
@@ -709,20 +767,29 @@ async def ask_tip(event_id: UUID, request: TipRequest, session: AsyncSession = D
 Bisheriger Chat:
 {history}
 Frage der Spieler: {request.question}
-{rule} Verrate niemals die komplette Zubereitung, keine Schrittlisten, keine vollständige Reihenfolge. Verrate auch nicht direkt, welche Handicaps (Fallen, vertauschte Mengen oder Einheiten) im Spiel sind. Deutsch, ohne Markdown."""
+{rule}{(" " + GOOD_COP_RULE) if good_cop else ""} Verrate niemals die komplette Zubereitung, keine Schrittlisten, keine vollständige Reihenfolge. Verrate auch nicht direkt, welche Handicaps (Fallen, vertauschte Mengen oder Einheiten) im Spiel sind. Deutsch, ohne Markdown."""
+    meta = None
     try:
-        draft = await complete_text(prompt, max_tokens=max_tokens)
-        if not check:
+        if good_cop:
+            pair = TwoTips.model_validate(await complete_json(prompt, max_tokens=max_tokens * 2 + 100))
+            options = [pair.truth.strip(), pair.lie.strip()]
+            if "telegramm" in effects:
+                options = [three_words(option) for option in options]
+            truth_first = random.random() < 0.5
+            ordered = options if truth_first else options[::-1]
+            tip, meta = f"1) {ordered[0]}\n2) {ordered[1]}", {"truth": 1 if truth_first else 2}
+        elif not check:
+            draft = await complete_text(prompt, max_tokens=max_tokens)
             tip = three_words(draft) if "telegramm" in effects else draft.strip()
         else:
-            tip = await check_tip(draft, "philosoph" in effects)
+            tip = await check_tip(await complete_text(prompt, max_tokens=max_tokens), "philosoph" in effects)
     except (OpenAIError, ValueError, ValidationError, json.JSONDecodeError):
         logger.exception("Event tip failed")
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Der Tipp-Chat ist gerade nicht verfügbar.") from None
-    session.add(EventTip(event_id=event.id, user_id=user.id, question=request.question.strip(), answer=tip))
+    session.add(EventTip(event_id=event.id, user_id=user.id, question=request.question.strip(), answer=tip, meta=meta))
     event.tip_count += 1
     await session.commit()
-    return {"answer": tip, "tip_count": event.tip_count}
+    return {"answer": None if "stille_post" in effects else tip, "tip_count": event.tip_count}
 
 
 async def check_tip(draft: str, keep_metaphor: bool) -> str:
@@ -748,6 +815,8 @@ async def submit_dish(event_id: UUID, request: SubmissionCreate, background: Bac
     require_cook_day(event)
     if event.phase != "cooking":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Die Abgabe ist bereits geschlossen.")
+    if "blindverkostung" in event_effects(event) and not (event.game_state or {}).get("blind_revealed"):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Erst das Gericht aufdecken, dann fotografieren.")
     recipe = await session.get(EventRecipe, request.recipe_id)
     if recipe is None or recipe.event_id != event.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gericht nicht gefunden")
@@ -793,3 +862,21 @@ async def finish_event(event_id: UUID, session: AsyncSession = Depends(get_sessi
     event.phase, event.finished_at = "finished", datetime.now(timezone.utc)
     await session.commit()
     return {"penalty_earned": event.penalty_earned}
+
+
+@router.post("/{event_id}/game/{action}")
+async def game_action(event_id: UUID, action: str, session: AsyncSession = Depends(get_session), user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """Interactive handicaps on the cook day: start the memory timer, or lift the blind tasting."""
+    event = await load_event_for(session, event_id, user)
+    require_cook_day(event)
+    effects = event_effects(event)
+    state = dict(event.game_state or {})
+    if action == "memory-start" and "memory" in effects and event.phase == "cooking":
+        state.setdefault("memory_started_at", datetime.now(timezone.utc).isoformat())
+    elif action == "blind-reveal" and "blindverkostung" in effects:
+        state["blind_revealed"] = True
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aktion nicht verfügbar")
+    event.game_state = state  # new dict so the JSONB change is written
+    await session.commit()
+    return state
