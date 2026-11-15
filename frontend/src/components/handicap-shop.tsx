@@ -31,12 +31,12 @@ export function HandicapShop() {
                 : <ul className="mt-4 grid gap-3 sm:grid-cols-2">{tier.items.map((item) => {
                     const example = item.example ? { ...item.example, image_data: SAMPLE_IMAGE } : null;
                     return <li key={item.id} id={item.id} className="flex scroll-mt-32 gap-4 rounded-3xl bg-white p-4 target:ring-4 target:ring-caramel/30 shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
-                        {example ? <HandicapPicture item={example} size="h-20 w-20" /> : <HandicapIcon id={item.id} tier={tier.tier} title={item.title} size={30} className="h-20 w-20" />}
+                        <HandicapIcon id={item.id} tier={tier.tier} title={item.title} size={30} className="h-20 w-20" />
                         <div className="min-w-0">
-                            <h3 className="flex items-center gap-2 font-semibold text-espresso">{example && <HandicapIcon id={item.id} tier={tier.tier} title={item.title} size={13} className="h-6 w-6 rounded-lg" />}{item.title}</h3>
-                            <p className="mt-1 text-xs leading-5 text-bark">{item.description}</p>
-                            {example ? <p className="mt-2 truncate text-sm font-semibold text-espresso"><HandicapName item={example} /> <span className="text-caramel">· {formatAmount(example.amount, example.unit)}</span></p>
-                                : item.example_text && <p className="mt-2 text-sm font-semibold text-espresso">{item.example_text}</p>}
+                            <h3 className="font-semibold text-espresso">{item.title}</h3>
+                            <p className="mt-1 text-sm leading-6 text-bark">{item.description}</p>
+                            {example ? <p className="mt-3 flex items-center gap-2.5 rounded-2xl bg-linen p-2 text-sm font-semibold text-espresso"><HandicapPicture item={example} size="h-10 w-10" /><span className="min-w-0 truncate"><HandicapName item={example} /> <span className="text-caramel">· {formatAmount(example.amount, example.unit)}</span></span></p>
+                                : item.example_text && <p className="mt-3 rounded-2xl bg-linen px-3 py-2 text-sm font-semibold text-espresso">{item.example_text}</p>}
                         </div>
                     </li>;
                 })}</ul>}
