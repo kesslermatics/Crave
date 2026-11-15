@@ -15,7 +15,7 @@ THUMBNAIL_QUALITY = 78
 Image.MAX_IMAGE_PIXELS = 50_000_000
 
 
-def make_thumbnail(image_data: str | None) -> str | None:
+def make_thumbnail(image_data: str | None, max_side: int = THUMBNAIL_MAX_SIDE) -> str | None:
     """Return a downscaled JPEG data URL for a stored image data URL, or None if it can't be decoded."""
     if not image_data or not image_data.startswith("data:image/"):
         return None
@@ -23,7 +23,7 @@ def make_thumbnail(image_data: str | None) -> str | None:
         encoded = image_data.split(",", 1)[1]
         with Image.open(io.BytesIO(base64.b64decode(encoded, validate=True))) as source:
             image = ImageOps.exif_transpose(source)
-            image.thumbnail((THUMBNAIL_MAX_SIDE, THUMBNAIL_MAX_SIDE), Image.Resampling.LANCZOS)
+            image.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
             if image.mode != "RGB":
                 image = image.convert("RGB")
             buffer = io.BytesIO()

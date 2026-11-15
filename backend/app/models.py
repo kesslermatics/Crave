@@ -1,9 +1,9 @@
 """Database models for Crave."""
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Table, Text, Uuid, func
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Table, Text, Uuid, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -112,3 +112,82 @@ class RecipeSuggestionHistory(Base):
     iterations: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+# --- Cooking events ("Adventskalender"): daily ingredient reveals, then a joint cook day. ---
+
+event_participants = Table(
+    "event_participants",
+    Base.metadata,
+    Column("event_id", Uuid, ForeignKey("events.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", String(36), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    creator_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    theme: Mapped[str] = mapped_column(Text, nullable=False)
+    categories: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    cook_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # generating -> active, or failed. Images are produced afterwards (images_pending).
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="generating")
+    progress: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    images_pending: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Basics everyone is expected to have (salt, oil …); never part of a daily drop.
+    pantry: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    tip_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    participants: Mapped[list[User]] = relationship(secondary=event_participants, lazy="selectin")
+
+
+class EventRecipe(Base):
+    __tablename__ = "event_recipes"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    event_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(40), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    # Full RecipeCreate JSON (without image). Instructions are stored but never sent to players.
+    recipe: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
+    image_data: Mapped[str | None] = mapped_column(Text)
+
+
+class EventDrop(Base):
+    """One player's package for one day: zero or more whole ingredients, or a teaser if empty."""
+
+    __tablename__ = "event_drops"
+    __table_args__ = (Index("ix_event_drops_event_user_day", "event_id", "user_id", "day_index", unique=True),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    event_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    day_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    # [{name, amount, unit, image_key}]
+    items: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list)
+    teaser: Mapped[str | None] = mapped_column(Text)
+    revealed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class EventTip(Base):
+    __tablename__ = "event_tips"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    event_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    answer: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class IngredientImage(Base):
+    """Global, reusable "ingredient on a pedestal" pictures keyed by a normalised ingredient name."""
+
+    __tablename__ = "ingredient_images"
+
+    key: Mapped[str] = mapped_column(String(120), primary_key=True)
+    image_data: Mapped[str] = mapped_column(Text, nullable=False)

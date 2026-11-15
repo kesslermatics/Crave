@@ -12,6 +12,7 @@ from app.auth import router as auth_router
 from app.ai import router as ai_router
 from app.config import get_settings
 from app.db import get_engine, initialize_database
+from app.events import admin_router as events_admin_router, fail_stale_generations, router as events_router
 from app.recipes import router as recipes_router
 from app.shopping import router as shopping_router
 
@@ -28,6 +29,7 @@ async def lifespan(_: FastAPI):
             raise RuntimeError("DATABASE_URL must be set in production")
     else:
         await initialize_database()
+        await fail_stale_generations()
     yield
     if settings.database_url is not None:
         await get_engine().dispose()
@@ -62,6 +64,8 @@ app.include_router(auth_router)
 app.include_router(ai_router)
 app.include_router(recipes_router)
 app.include_router(shopping_router)
+app.include_router(events_router)
+app.include_router(events_admin_router)
 
 
 @app.middleware("http")

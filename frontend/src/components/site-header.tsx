@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { BookOpen, ChefHat, House, ShoppingBasket } from "lucide-react";
+import { BookOpen, ChefHat, Gift, House, ShoppingBasket } from "lucide-react";
 
 const links = [
     { href: "/", label: "Start" },
     { href: "/recipes", label: "Rezepte" },
     { href: "/einkaufsliste", label: "Einkaufsliste" },
+    { href: "/events", label: "Events" },
 ];
 
 export function Logo() {
@@ -38,6 +39,7 @@ export function MobileNav() {
         { href: "/", icon: House, label: "Start" },
         { href: "/recipes", icon: BookOpen, label: "Rezepte" },
         { href: "/einkaufsliste", icon: ShoppingBasket, label: "Einkauf" },
+        { href: "/events", icon: Gift, label: "Events" },
     ];
     return (
         <nav aria-label="Schnellnavigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-espresso/8 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">

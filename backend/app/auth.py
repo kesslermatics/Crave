@@ -88,6 +88,16 @@ async def login(payload: LoginRequest, session: AsyncSession = Depends(get_sessi
     return TokenResponse(access_token=create_access_token(user))
 
 
+def is_admin(user: User) -> bool:
+    return user.email == get_settings().admin_email.strip().lower()
+
+
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    if not is_admin(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Nur für Admins")
+    return user
+
+
 @router.get("/me")
-async def me(user: User = Depends(get_current_user)) -> dict[str, str]:
-    return {"id": user.id, "email": user.email}
+async def me(user: User = Depends(get_current_user)) -> dict[str, str | bool]:
+    return {"id": user.id, "email": user.email, "is_admin": is_admin(user)}

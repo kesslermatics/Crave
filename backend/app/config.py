@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     fast_model: str = Field(default="google/gemini-3.8-flash", alias="FAST_MODEL")
     image_model: str = Field(default="google/gemini-nano-banana-2.1", alias="IMAGE_MODEL")
     jwt_secret: SecretStr | None = Field(default=None, alias="JWT_SECRET")
+    # The single account allowed to create cooking events.
+    admin_email: str = Field(default="robby9903@gmail.com", alias="ADMIN_EMAIL")
     # Comma-separated list of exact origins, e.g. https://crave.example.com
     cors_origins: str = "http://localhost:3000"
     # Comma-separated list of accepted Host headers; "*" only for local development.
