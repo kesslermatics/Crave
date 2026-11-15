@@ -149,6 +149,8 @@ class Event(Base):
     penalty_earned: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     penalty_spent: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # [{handicap, title, ingredient}] actually applied to this event (penalty_spent points).
+    handicaps: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     participants: Mapped[list[User]] = relationship(secondary=event_participants, lazy="selectin")
 

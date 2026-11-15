@@ -7,15 +7,16 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowUp, Gift, Lightbulb, Lock, Sparkles, Trash2, X } from "lucide-react";
 import { DropItem, EventDetail as EventData, eventApi, formatAmount, formatDay } from "@/lib/events";
 import { EventJury } from "@/components/event-jury";
+import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
 import { FormattedMessage } from "@/components/formatted-message";
 import { LoadingIndicator } from "@/components/loading-indicator";
 
 type Revealed = { day_index: number; items: DropItem[]; teaser: string | null };
 
-function IngredientPicture({ item, size = "h-16 w-16" }: { item: DropItem; size?: string }) {
-    return item.image_data
-        ? <img src={item.image_data} alt="" className={`${size} shrink-0 rounded-2xl object-cover`} />
-        : <span className={`${size} grid shrink-0 place-items-center rounded-2xl bg-saffron/25 text-caramel`} aria-hidden="true"><Gift size={20} /></span>;
+const IngredientPicture = HandicapPicture;
+
+function HandicapBadge({ item }: { item: DropItem }) {
+    return item.handicap ? <span className="mt-1 inline-block rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-700">Handicap: {item.handicap.title}</span> : null;
 }
 
 function RevealModal({ drop, onClose }: { drop: Revealed; onClose: () => void }) {
@@ -45,14 +46,15 @@ function RevealModal({ drop, onClose }: { drop: Revealed; onClose: () => void })
                     <AnimatePresence mode="wait">
                         <motion.div key={step} className="flex flex-col items-center" initial={{ y: 40, opacity: 0, scale: 0.6, rotate: -6 }} animate={{ y: 0, opacity: 1, scale: 1, rotate: 0 }} exit={{ y: -30, opacity: 0, scale: 0.8 }} transition={{ delay: step === 0 ? 0.35 : 0.05, type: "spring", stiffness: 200, damping: 15 }}>
                             <IngredientPicture item={item} size="h-44 w-44" />
-                            <p className="mt-3 text-lg font-semibold text-espresso">{item.name}</p>
+                            <p className="mt-3 text-lg font-semibold text-espresso"><HandicapName item={item} /></p>
+                            <HandicapBadge item={item} />
                             <p className="text-sm font-semibold text-caramel">{formatAmount(item.amount, item.unit)}</p>
                         </motion.div>
                     </AnimatePresence>
                 </div>}
-                {isSummary && <ul className="mt-6 space-y-2 text-left">{drop.items.map((entry, index) => <motion.li key={entry.name} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.08 }} className="flex items-center gap-3 rounded-2xl bg-white p-2.5">
+                {isSummary && <ul className="mt-6 space-y-2 text-left">{drop.items.map((entry, index) => <motion.li key={index} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.08 }} className="flex items-center gap-3 rounded-2xl bg-white p-2.5">
                     <IngredientPicture item={entry} size="h-12 w-12" />
-                    <span className="min-w-0 flex-1 text-sm font-semibold break-words text-espresso">{entry.name}</span>
+                    <span className="min-w-0 flex-1 text-sm font-semibold break-words text-espresso"><HandicapName item={entry} /></span>
                     <span className="shrink-0 text-sm font-semibold text-caramel">{formatAmount(entry.amount, entry.unit)}</span>
                 </motion.li>)}</ul>}
                 <button type="button" onClick={next} autoFocus className="mt-6 min-h-12 w-full rounded-full bg-espresso px-6 py-3 text-sm font-semibold text-white transition hover:bg-caramel">{buttonLabel}</button>
@@ -140,6 +142,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
         <p className="mt-6 text-xs font-bold tracking-[0.2em] text-caramel uppercase">{event.categories.join(" · ")}</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-espresso sm:text-4xl">{event.title}</h1>
         <p className="mt-2 text-sm text-bark">Kochtag: {formatDay(event.cook_date, { weekday: "long", day: "numeric", month: "long" })}{!event.is_cook_day && daysLeft > 0 && ` · noch ${daysLeft} ${daysLeft === 1 ? "Tag" : "Tage"}`}</p>
+        {event.handicap_count > 0 && <Link href="/handicaps" className="mt-3 inline-flex min-h-9 items-center rounded-full bg-red-50 px-3 text-xs font-bold text-red-700">{event.handicap_count} {event.handicap_count === 1 ? "Handicap" : "Handicaps"} im Spiel · {event.penalty_spent} Strafpunkte eingelöst</Link>}
         {error && <p role="alert" className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
 
         {event.status === "generating" && <div className="mt-10 rounded-3xl bg-white p-6"><LoadingIndicator label={event.progress || "Das Event wird vorbereitet…"} /></div>}
@@ -160,6 +163,10 @@ export function EventDetail({ eventId }: { eventId: string }) {
                         : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
                 </div>
             </motion.article>)}
+            {event.handicaps.length > 0 && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="handicaps-title">
+                <h3 id="handicaps-title" className="text-sm font-semibold text-espresso">Aufgelöst: eure Handicaps</h3>
+                <ul className="mt-2 space-y-1 text-sm text-bark">{event.handicaps.map((entry, index) => <li key={index}><span className="font-semibold text-espresso">{entry.ingredient}</span> · {entry.title}</li>)}</ul>
+            </section>}
             {(event.phase === "cooking" || event.tips.length > 0) && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={event.phase !== "cooking"} />}
             <EventJury event={event} onChange={load} />
         </section>}
@@ -197,9 +204,9 @@ export function EventDetail({ eventId }: { eventId: string }) {
             <section className="mt-10" aria-labelledby="mine-title">
                 <h2 id="mine-title" className="text-xl font-semibold text-espresso">{event.is_cook_day ? "Was du mitbringen solltest" : "Deine Einkaufsliste"}</h2>
                 {myItems.length === 0 ? <p className="mt-3 text-sm text-bark">Noch nichts aufgedeckt.</p>
-                    : <ul className="mt-4 space-y-2">{myItems.map((item) => <li key={item.name} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
+                    : <ul className="mt-4 space-y-2">{myItems.map((item, index) => <li key={index} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
                         <IngredientPicture item={item} size="h-12 w-12" />
-                        <span className="min-w-0 flex-1 text-sm font-semibold break-words text-espresso">{item.name}</span>
+                        <span className="min-w-0 flex-1 text-sm font-semibold break-words text-espresso"><HandicapName item={item} />{item.handicap && <span className="block text-[11px] font-bold text-red-700">{item.handicap.title}</span>}</span>
                         <span className="shrink-0 text-sm font-semibold text-caramel">{formatAmount(item.amount, item.unit)}</span>
                     </li>)}</ul>}
                 {event.drops.filter((drop) => drop.state === "revealed" && drop.teaser).length > 0 && <ul className="mt-4 space-y-2">{event.drops.filter((drop) => drop.state === "revealed" && drop.teaser).map((drop) => <li key={drop.day_index} className="flex gap-2 text-sm text-bark"><Sparkles size={14} className="mt-1 shrink-0 text-caramel" aria-hidden="true" />{drop.teaser}</li>)}</ul>}

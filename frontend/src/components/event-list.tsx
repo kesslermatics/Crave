@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Gift, Settings } from "lucide-react";
+import { Gift, Settings, Skull } from "lucide-react";
 import { apiUrl } from "@/lib/api";
 import { EventSummary, eventApi, formatDay } from "@/lib/events";
 import { LoadingIndicator } from "@/components/loading-indicator";
@@ -16,9 +16,12 @@ export function EventList() {
             .then((response) => response.json()).then((me) => setIsAdmin(Boolean(me.is_admin))).catch(() => undefined);
     }, []);
     return <main className="mx-auto max-w-3xl px-5 pt-8 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-10">
-        <div className="flex items-end justify-between gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-4">
             <h1 className="text-3xl font-semibold tracking-[-0.04em] text-espresso sm:text-4xl">Koch-Events</h1>
+            <div className="flex shrink-0 gap-2">
+            <Link href="/handicaps" className="flex min-h-11 items-center gap-1.5 rounded-full border border-espresso/10 bg-white px-4 py-2 text-sm font-semibold text-espresso hover:border-caramel/40"><Skull size={15} aria-hidden="true" /> Handicaps</Link>
             {isAdmin && <Link href="/admin" className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-espresso/10 bg-white px-4 py-2 text-sm font-semibold text-espresso hover:border-caramel/40"><Settings size={15} aria-hidden="true" /> Admin</Link>}
+            </div>
         </div>
         {error && <p role="alert" className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
         {events === null && !error ? <div className="mt-8"><LoadingIndicator label="Events werden geladen…" /></div>

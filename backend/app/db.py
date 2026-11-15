@@ -54,6 +54,7 @@ async def initialize_database() -> None:
             "penalty_earned INTEGER NOT NULL DEFAULT 0",
             "penalty_spent INTEGER NOT NULL DEFAULT 0",
             "finished_at TIMESTAMPTZ",
+            "handicaps JSONB NOT NULL DEFAULT '[]'::jsonb",
         ):
             await connection.execute(text(f"ALTER TABLE events ADD COLUMN IF NOT EXISTS {column}"))
 

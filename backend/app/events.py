@@ -31,6 +31,7 @@ from app.ai import (
 from app.auth import get_current_user, require_admin
 from app.config import get_settings
 from app.db import get_session, get_session_factory
+from app.handicaps import CATALOG, choose_handicaps, disguise, public_item
 from app.models import Event, EventDrop, EventRecipe, EventSubmission, EventTip, IngredientImage, User
 from app.thumbnails import make_thumbnail
 
@@ -192,7 +193,14 @@ async def image_map(session: AsyncSession, keys: set[str]) -> dict[str, str]:
 
 
 def drop_items_with_images(items: list[dict[str, Any]], images: dict[str, str]) -> list[dict[str, Any]]:
-    return [{**item, "image_data": images.get(str(item.get("image_key")))} for item in items]
+    return [public_item(item, images.get(str(item.get("image_key")))) for item in items]
+
+
+async def penalty_bank(session: AsyncSession, creator_id: str) -> int:
+    """Points earned in finished events minus points already spent (or reserved) for handicaps."""
+    earned = await session.scalar(select(func.coalesce(func.sum(Event.penalty_earned), 0)).where(Event.creator_id == creator_id, Event.phase == "finished")) or 0
+    spent = await session.scalar(select(func.coalesce(func.sum(Event.penalty_spent), 0)).where(Event.creator_id == creator_id)) or 0
+    return max(0, int(earned) - int(spent))
 
 
 async def generate_image_data(prompt: str, side: int) -> str | None:
@@ -337,6 +345,19 @@ async def run_generation(event_id: UUID, ideas: list[str]) -> None:
             canonical = distribution.canonical if len(distribution.canonical) == len(ingredients) else []
             keys = [ingredient_key(canonical[i] if canonical else item["name"]) for i, item in enumerate(ingredients)]
             event.pantry = [ingredients[i]["name"] for i in sorted(pantry)]
+
+            # Spend the banked penalty points (reserved on creation) on handicaps.
+            plan: dict[int, dict[str, Any]] = {}
+            if event.penalty_spent > 0:
+                event.progress = "Handicaps werden ausgeteilt…"
+                await session.commit()
+                previous = (await session.scalars(select(Event).where(Event.creator_id == event.creator_id, Event.id != event.id).order_by(Event.created_at.desc()).limit(3))).all()
+                recent = [str(entry.get("handicap")) for other in previous for entry in (other.handicaps or [])]
+                eligible = [i for i in range(len(ingredients)) if i not in pantry]
+                picks, spent = await choose_handicaps(ingredients, eligible, event.penalty_spent, recent, str(event.id))
+                plan = {pick["index"]: pick for pick in picks}
+                event.penalty_spent = spent
+                event.handicaps = [{"handicap": p["handicap"], "title": CATALOG[p["handicap"]].title, "ingredient": ingredients[p["index"]]["name"]} for p in picks]
             for (person, day), indices in slots.items():
                 teaser = None
                 if not indices:
@@ -345,7 +366,7 @@ async def run_generation(event_id: UUID, ideas: list[str]) -> None:
                     event_id=event.id,
                     user_id=participants[person].id,
                     day_index=day,
-                    items=[{**ingredients[i], "image_key": keys[i]} for i in indices],
+                    items=[{**ingredients[i], "image_key": keys[i], **(disguise(ingredients[i], plan[i], f"{event.id}-{i}") if i in plan else {})} for i in indices],
                     teaser=teaser,
                 ))
             event.status, event.progress = "active", "Bilder werden im Hintergrund gemalt…"
@@ -360,7 +381,7 @@ async def run_generation(event_id: UUID, ideas: list[str]) -> None:
         async with factory() as session:
             await session.execute(delete(EventRecipe).where(EventRecipe.event_id == event_id))
             await session.execute(delete(EventDrop).where(EventDrop.event_id == event_id))
-            await session.execute(update(Event).where(Event.id == event_id).values(status="failed", progress="Generierung fehlgeschlagen. Bitte neu anlegen.", images_pending=False))
+            await session.execute(update(Event).where(Event.id == event_id).values(status="failed", progress="Generierung fehlgeschlagen. Bitte neu anlegen.", images_pending=False, penalty_spent=0, handicaps=[]))
             await session.commit()
         return
 
@@ -386,7 +407,7 @@ async def run_generation(event_id: UUID, ideas: list[str]) -> None:
 async def fail_stale_generations() -> None:
     """Background tasks don't survive a restart; don't leave events spinning forever."""
     async with get_session_factory()() as session:
-        await session.execute(update(Event).where(Event.status == "generating").values(status="failed", progress="Generierung durch Neustart abgebrochen. Bitte neu anlegen."))
+        await session.execute(update(Event).where(Event.status == "generating").values(status="failed", progress="Generierung durch Neustart abgebrochen. Bitte neu anlegen.", penalty_spent=0, handicaps=[]))
         await session.execute(update(Event).where(Event.images_pending.is_(True)).values(images_pending=False, progress=""))
         await session.execute(update(Event).where(Event.phase == "judging").values(phase="cooking", jury_error="Die Jury wurde durch einen Neustart unterbrochen. Bitte erneut starten."))
         await session.commit()
@@ -490,6 +511,8 @@ async def create_event(request: EventCreate, background: BackgroundTasks, sessio
         creator_id=admin.id, title=request.title.strip(), theme=request.theme.strip(), categories=request.categories,
         start_date=request.start_date, cook_date=request.cook_date, status="generating", progress="Wird vorbereitet…",
         images_pending=True, pantry=[], tip_count=0, participants=[admin, *users],
+        # Reserve the whole bank now; generation lowers it to what the handicaps actually cost.
+        penalty_spent=await penalty_bank(session, admin.id), handicaps=[],
     )
     session.add(event)
     await session.commit()
@@ -506,10 +529,10 @@ async def admin_events(session: AsyncSession = Depends(get_session), admin: User
 
 @admin_router.get("/penalty-balance")
 async def penalty_balance(session: AsyncSession = Depends(get_session), admin: User = Depends(require_admin)) -> dict[str, Any]:
-    """Points banked from finished events (tips + jury) minus points already spent on handicaps."""
-    events = (await session.scalars(select(Event).where(Event.creator_id == admin.id, Event.phase == "finished").order_by(Event.finished_at.desc()))).all()
-    return {"balance": sum(e.penalty_earned - e.penalty_spent for e in events),
-            "history": [{"title": e.title, "earned": e.penalty_earned, "spent": e.penalty_spent} for e in events[:10]]}
+    """Points banked from finished events (tips + jury) minus points spent on handicaps."""
+    events = (await session.scalars(select(Event).where(Event.creator_id == admin.id).order_by(Event.created_at.desc()).limit(10))).all()
+    return {"balance": await penalty_bank(session, admin.id),
+            "history": [{"title": e.title, "earned": e.penalty_earned, "spent": e.penalty_spent} for e in events]}
 
 
 @admin_router.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -592,6 +615,8 @@ async def event_view(event_id: UUID, session: AsyncSession = Depends(get_session
         "start_date": event.start_date.isoformat(), "cook_date": event.cook_date.isoformat(), "today": today.isoformat(),
         "days_total": days_total(event), "is_cook_day": cook_day, "pantry": event.pantry, "drops": drops, "stats": stats,
         "tip_count": event.tip_count, "recipes": recipes,
+        "handicap_count": len(event.handicaps or []), "penalty_spent": event.penalty_spent,
+        "handicaps": (event.handicaps or []) if cook_day else [],
         "tips": [{"email": emails.get(t.user_id, "?"), "question": t.question, "answer": t.answer, "created_at": t.created_at.isoformat()} for t in tips] if cook_day else [],
     }
 
