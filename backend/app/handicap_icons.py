@@ -26,12 +26,8 @@ ICON_SIDE = 256
 ICON_CONCURRENCY = 3
 _fill_lock = asyncio.Lock()
 
-BASE_STYLE = (
-    "A single glossy 3D game-style app icon, soft clay render, centred on a rounded-square badge. "
-    "Warm Crave palette: saffron gold, roasted caramel, espresso brown and cream, with a {accent} accent rim that marks the difficulty. "
-    "Soft studio light from the top left, gentle inner shadow, plain cream background, square 1:1, the symbol fills about 60 % of the badge. "
-    "Playful kitchen-game mood. No text, no letters, no numbers, no logos, no people."
-)
+# Used only when the admin gives no own style direction.
+DEFAULT_STYLE = "stylized 3D render, cartoonish, vibrant colours, soft lighting, claymation style, playful, game UI icon, clean background"
 TIER_ACCENT = {"light": "golden yellow", "medium": "bright orange", "heavy": "deep red"}
 
 # What each icon shows (English, for the image model).
@@ -75,10 +71,18 @@ class StyleRequest(BaseModel):
 
 
 def icon_prompt(handicap_id: str, style_hint: str) -> str:
+    """Subject first (what the icon must show and why), then the style. Image models weigh the beginning most,
+    so a long style preamble made every icon look like the same generic badge."""
     handicap = CATALOG[handicap_id]
-    style = BASE_STYLE.format(accent=TIER_ACCENT.get(handicap.tier, "golden yellow"))
-    extra = f" Additional style direction: {style_hint.strip()}" if style_hint.strip() else ""
-    return f"{style}{extra} The symbol: {MOTIFS.get(handicap_id, handicap.title)}."
+    return (
+        f"Icon for a handicap card in a cooking party game. Handicap name (German): \"{handicap.title}\". "
+        f"What it does in the game (German): {handicap.description} "
+        f"The icon must clearly and literally show: {MOTIFS.get(handicap_id, handicap.title)}. "
+        "This object is the hero of the picture, large, centred and instantly recognisable at small size, with one or two supporting details at most. "
+        f"Style: {style_hint.strip() or DEFAULT_STYLE}. "
+        f"Use a subtle {TIER_ACCENT.get(handicap.tier, 'golden yellow')} accent colour somewhere in the object or its glow to mark the difficulty. "
+        "Square 1:1, plain uncluttered background. Absolutely no text, letters, numbers, labels or logos."
+    )
 
 
 async def approved_style(session: AsyncSession) -> str | None:
@@ -127,7 +131,7 @@ async def icons(session: AsyncSession = Depends(get_session), user: User = Depen
         preview = next((row for row in rows if row.id == PREVIEW_ID), None)
         result.update(
             total=len(CATALOG), done=len(approved), approved=bool(approved), generating=_fill_lock.locked(),
-            preview={"handicap_id": preview.source, "title": CATALOG[preview.source].title, "image_data": preview.image_data, "style_hint": preview.style_hint}
+            preview={"handicap_id": preview.source, "title": CATALOG[preview.source].title, "image_data": preview.image_data, "style_hint": preview.style_hint, "prompt": icon_prompt(preview.source, preview.style_hint)}
             if preview and preview.source in CATALOG else None,
         )
     return result
@@ -143,7 +147,7 @@ async def generate_preview(request: StyleRequest, session: AsyncSession = Depend
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Die Bild-KI ist gerade nicht erreichbar.")
     await session.merge(HandicapIconImage(id=PREVIEW_ID, image_data=image, approved=False, style_hint=style, source=handicap_id))
     await session.commit()
-    return {"handicap_id": handicap_id, "title": CATALOG[handicap_id].title, "image_data": image, "style_hint": style}
+    return {"handicap_id": handicap_id, "title": CATALOG[handicap_id].title, "image_data": image, "style_hint": style, "prompt": icon_prompt(handicap_id, style)}
 
 
 @router.post("/admin/handicap-icons/approve", status_code=status.HTTP_202_ACCEPTED)
