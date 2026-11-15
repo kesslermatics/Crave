@@ -121,23 +121,12 @@ class TipRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list, max_length=12)
 
 
-class PlanEntry(BaseModel):
-    person: int
-    day: int
-    ingredients: list[int] = Field(default_factory=list)
-
-
-class TeaserEntry(BaseModel):
-    person: int
-    day: int
-    text: str = Field(min_length=1, max_length=400)
-
-
 class Distribution(BaseModel):
     pantry: list[int] = Field(default_factory=list)
     canonical: list[str] = Field(default_factory=list)
-    plan: list[PlanEntry] = Field(default_factory=list)
-    teasers: list[TeaserEntry] = Field(default_factory=list)
+    # Non-pantry ingredient indices from least to most revealing.
+    order: list[int] = Field(default_factory=list)
+    teasers: list[str] = Field(default_factory=list)
 
 
 class TipCheck(BaseModel):
@@ -244,45 +233,42 @@ def merge_ingredients(recipes: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 async def distribute(ingredients: list[dict[str, Any]], recipes: list[dict[str, Any]], persons: int, days: int) -> Distribution:
+    """The model only judges the food (basics, reveal order, hints); the fair split is done in build_slots."""
     listing = "\n".join(f"{index}: {item['name']} – {item['amount']:g} {item['unit']}" for index, item in enumerate(ingredients))
     dishes = json.dumps([{"title": r["title"], "recipe_type": r["recipe_type"], "details": r["details"]} for r in recipes], ensure_ascii=False)
-    prompt = f"""Du planst ein Koch-Spiel. {persons} Personen bekommen über {days} Tage (day 0 bis {days - 1}) geheime Zutatenpakete und kochen am Ende gemeinsam diese Gerichte, ohne sie vorher zu kennen: {dishes}
+    teaser_count = min(40, persons * days)
+    prompt = f"""Du bereitest ein Koch-Spiel vor. Spieler decken über mehrere Tage geheim einzelne Zutaten auf und kochen am Ende gemeinsam diese Gerichte, ohne sie vorher zu kennen: {dishes}
 Zutaten (Index: Name – Menge):
 {listing}
-Regeln:
-1. pantry: Indizes reiner Grundzutaten, die jeder zu Hause hat (nur Salz, Pfeffer, Wasser, neutrales Speiseöl, ggf. Eiswürfel). Diese werden nicht verteilt.
-2. plan: Jede andere Zutat genau einmal genau einer Person (person 0 bis {persons - 1}) an genau einem Tag zuordnen. Mengen werden nie geteilt.
-3. Verteile möglichst gleichmäßig über Personen und Tage. Ein Tag darf mehrere Zutaten enthalten, wenn es mehr Zutaten als Tage gibt. Bündle sinnvoll (z. B. Mehl und Backpulver).
-4. Lege charakteristische Zutaten, die das Gericht sofort verraten, eher auf spätere Tage.
-5. teasers: Für jede Kombination aus person und day ohne Zutat einen kurzen, neugierig machenden Hinweis (ein Satz, Deutsch), z. B. benötigtes Küchengerät, Garmethode, Textur oder Herkunftsregion. Nenne niemals den Gerichtsnamen oder eine Zutat.
-6. canonical: für jeden Index (gleiche Reihenfolge, gleiche Länge) den einfachen deutschen Grundnamen der Zutat im Singular, kleingeschrieben, ohne Mengen oder Zusätze, z. B. "ei", "weizenmehl", "butter".
-Antworte ausschließlich mit JSON: {{"pantry":[int],"canonical":[str],"plan":[{{"person":int,"day":int,"ingredients":[int]}}],"teasers":[{{"person":int,"day":int,"text":str}}]}}"""
+Aufgaben:
+1. pantry: Indizes reiner Grundzutaten, die jeder zu Hause hat (nur Salz, Pfeffer, Wasser, neutrales Speiseöl, ggf. Eiswürfel).
+2. order: ALLE übrigen Indizes genau einmal, sortiert von unauffällig (verrät wenig, z. B. Mehl, Zucker) bis charakteristisch (verrät das Gericht fast).
+3. canonical: für jeden Index (gleiche Reihenfolge und Länge wie die Zutatenliste) den einfachen deutschen Grundnamen im Singular, kleingeschrieben, ohne Mengen oder Zusätze, z. B. "ei", "weizenmehl", "butter".
+4. teasers: {teaser_count} unterschiedliche, kurze, neugierig machende Hinweise (je ein Satz, Deutsch), z. B. benötigtes Küchengerät, Garmethode, Textur oder Herkunftsregion. Nie den Gerichtsnamen oder eine Zutat nennen.
+Antworte ausschließlich mit JSON: {{"pantry":[int],"order":[int],"canonical":[str],"teasers":[str]}}"""
     try:
         return Distribution.model_validate(await complete_json(prompt, model=get_settings().fast_model, max_tokens=6_000))
     except (ValidationError, ValueError, json.JSONDecodeError, OpenAIError) as error:
-        # The repair step below still produces a valid, fair plan from an empty distribution.
         logger.warning("Ingredient distribution failed, using fallback: %s", error)
         return Distribution()
 
 
-def build_slots(distribution: Distribution, count: int, persons: int, days: int) -> tuple[set[int], dict[tuple[int, int], list[int]], dict[tuple[int, int], str]]:
-    """Repair the model's plan so every ingredient appears exactly once on a valid slot."""
+def build_slots(distribution: Distribution, count: int, persons: int, days: int) -> tuple[set[int], dict[tuple[int, int], list[int]]]:
+    """Fair, deterministic split: players alternate along the reveal order (so everyone gets the same number
+    of ingredients and a similar mix), then each player's share is spread evenly over the days."""
     pantry = {index for index in distribution.pantry if 0 <= index < count}
+    order = list(dict.fromkeys(index for index in distribution.order if 0 <= index < count and index not in pantry))
+    order += [index for index in range(count) if index not in pantry and index not in order]
     slots: dict[tuple[int, int], list[int]] = {(p, d): [] for p in range(persons) for d in range(days)}
-    seen = set(pantry)
-    for entry in distribution.plan:
-        if (entry.person, entry.day) not in slots:
-            continue
-        for index in entry.ingredients:
-            if 0 <= index < count and index not in seen:
-                slots[(entry.person, entry.day)].append(index)
-                seen.add(index)
-    for index in (i for i in range(count) if i not in seen):
-        # Fill the emptiest slot, preferring later days so early drops stay vague.
-        target = min(slots, key=lambda slot: (len(slots[slot]), -slot[1]))
-        slots[target].append(index)
-    teasers = {(t.person, t.day): t.text.strip() for t in distribution.teasers if (t.person, t.day) in slots}
-    return pantry, slots, teasers
+    for person in range(persons):
+        share = order[person::persons]
+        k = len(share)
+        for position, index in enumerate(share):
+            # k <= days: spread from the first to the last day (most revealing item last), gaps get teasers;
+            # k > days: evenly sized daily bundles.
+            day = round(position * (days - 1) / (k - 1)) if 1 < k <= days else position * days // k
+            slots[(person, day)].append(index)
+    return pantry, slots
 
 
 async def run_generation(event_id: UUID, ideas: list[str]) -> None:
@@ -308,17 +294,22 @@ async def run_generation(event_id: UUID, ideas: list[str]) -> None:
             ingredients = merge_ingredients(recipes)
             days = days_total(event)
             distribution = await distribute(ingredients, recipes, len(participants), days)
-            pantry, slots, teasers = build_slots(distribution, len(ingredients), len(participants), days)
+            pantry, slots = build_slots(distribution, len(ingredients), len(participants), days)
+            teasers = [text.strip() for text in distribution.teasers if text.strip()] or ["Heute gibt's nur Vorfreude – morgen geht's weiter."]
+            teaser_index = 0
             canonical = distribution.canonical if len(distribution.canonical) == len(ingredients) else []
             keys = [ingredient_key(canonical[i] if canonical else item["name"]) for i, item in enumerate(ingredients)]
             event.pantry = [ingredients[i]["name"] for i in sorted(pantry)]
             for (person, day), indices in slots.items():
+                teaser = None
+                if not indices:
+                    teaser, teaser_index = teasers[teaser_index % len(teasers)], teaser_index + 1
                 session.add(EventDrop(
                     event_id=event.id,
                     user_id=participants[person].id,
                     day_index=day,
                     items=[{**ingredients[i], "image_key": keys[i]} for i in indices],
-                    teaser=None if indices else teasers.get((person, day)) or "Heute gibt's nur Vorfreude – morgen geht's weiter.",
+                    teaser=teaser,
                 ))
             event.status, event.progress = "active", "Bilder werden im Hintergrund gemalt…"
             await session.commit()
@@ -479,6 +470,7 @@ async def event_view(event_id: UUID, session: AsyncSession = Depends(get_session
 
     return {
         "id": str(event.id), "title": event.title, "theme": event.theme, "status": event.status, "progress": event.progress,
+        "images_pending": event.images_pending, "is_creator": event.creator_id == user.id,
         "categories": [CATEGORIES[c][0] for c in event.categories if c in CATEGORIES],
         "start_date": event.start_date.isoformat(), "cook_date": event.cook_date.isoformat(), "today": today.isoformat(),
         "days_total": days_total(event), "is_cook_day": cook_day, "pantry": event.pantry, "drops": drops, "stats": stats,
@@ -495,6 +487,8 @@ async def reveal_drop(event_id: UUID, day_index: int, session: AsyncSession = De
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Paket nicht gefunden")
     if event.start_date + timedelta(days=day_index) > today_berlin():
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Dieses Paket ist noch verschlossen.")
+    if event.images_pending:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Die Bilder werden noch gemalt – gleich kannst du öffnen.")
     if drop.revealed_at is None:
         drop.revealed_at = datetime.now(timezone.utc)
         await session.commit()

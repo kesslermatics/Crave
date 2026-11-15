@@ -5,7 +5,7 @@ export type Drop = { day_index: number; date: string; state: "locked" | "availab
 export type EventRecipe = { category: string; title: string; description: string; image_data: string | null; servings: number; total_time_minutes: number; difficulty: string; ingredients: { name: string; amount: number; unit: string }[] };
 export type EventTip = { email: string; question: string; answer: string; created_at: string };
 export type EventDetail = {
-    id: string; title: string; theme: string; status: "generating" | "active" | "failed"; progress: string; categories: string[];
+    id: string; title: string; theme: string; status: "generating" | "active" | "failed"; progress: string; images_pending: boolean; is_creator: boolean; categories: string[];
     start_date: string; cook_date: string; today: string; days_total: number; is_cook_day: boolean; pantry: string[];
     drops: Drop[]; stats: { email: string; is_me: boolean; revealed: number; tips: number }[]; tip_count: number; recipes: EventRecipe[]; tips: EventTip[];
 };
