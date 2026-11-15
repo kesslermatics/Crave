@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowUp, Gift, Lightbulb, Lock, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, ChevronDown, Gift, Lightbulb, Lock, Sparkles, Trash2, X } from "lucide-react";
 import { DropItem, EventDetail as EventData, EventIngredient, eventApi, formatAmount, formatDay } from "@/lib/events";
 import { EventJury } from "@/components/event-jury";
 import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
@@ -90,29 +90,29 @@ function RevealModal({ drop, onClose }: { drop: Revealed; onClose: () => void })
             </div>
             <button type="button" onClick={onClose} aria-label="Schließen" className="absolute top-3 right-3 z-10 grid h-11 w-11 place-items-center rounded-full text-bark hover:bg-espresso/5"><X size={18} /></button>
             <div className="relative">
-                <p className="text-xs font-b<div className=" mt-6 grid min-h-64 place-items-center overflow-hidden" aria-live="polite">t > 1 && !isSummary && ` · ${step + 1} von ${count}`}</p>
-            <h2 id="reveal-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso">{count === 0 ? "Hinweis des Tages" : isSummary ? "Dein Paket" : "Deine Zutat"}</h2>
-            {count === 0 && <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="mt-6 flex items-start gap-3 rounded-2xl bg-white p-4 text-left text-sm leading-6 text-espresso"><Sparkles size={18} className="mt-0.5 shrink-0 text-caramel" aria-hidden="true" />{drop.teaser}</motion.p>}
-            {count > 0 && !isSummary && <div className="mt-6 grid min-h-64 place-items-center" aria-live="polite">
-                <AnimatePresence mode="wait">
-                    <motion.div key={step} className="flex flex-col items-center" initial={{ y: 40, opacity: 0, scale: 0.6, rotate: -6 }} animate={{ y: 0, opacity: 1, scale: 1, rotate: 0 }} exit={{ y: -30, opacity: 0, scale: 0.8 }} transition={{ delay: step === 0 ? 0.35 : 0.05, type: "spring", stiffness: 200, damping: 15 }}>
-                        <IngredientPicture item={item} size="h-44 w-44" />
-                        <p className="mt-3 text-lg font-semibold text-espresso"><HandicapName item={item} /></p>
-                        <HandicapBadge item={item} />
-                        <p className="text-sm font-semibold text-caramel">{formatAmount(item.amount, item.unit)}</p>
-                    </motion.div>
-                </AnimatePresence>
-            </div>}
-            {isSummary && <ul className="mt-6 space-y-2 text-left">{drop.items.map((entry, index) => <motion.li key={index} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.08 }} className="flex items-center gap-3 rounded-2xl bg-white p-2.5">
-                <IngredientPicture item={entry} size="h-12 w-12" />
-                <span className="min-w-0 flex-1 text-sm font-semibold break-words text-espresso"><HandicapName item={entry} /></span>
-                <span className="shrink-0 text-sm font-semibold text-caramel">{formatAmount(entry.amount, entry.unit)}</span>
-            </motion.li>)}</ul>}
-            <button type="button" onClick={next} autoFocus className="mt-6 min-h-12 w-full rounded-full bg-espresso px-6 py-3 text-sm font-semibold text-white transition hover:bg-caramel">{buttonLabel}</button>
-            <p className="mt-4 text-xs text-bark">Psst – nur du siehst das.</p>
-        </div>
-    </motion.div>
-    </motion.div >;
+                <p className="text-xs font-bold tracking-[0.2em] text-caramel uppercase">Tag {drop.day_index + 1}{count > 1 && !isSummary && ` · ${step + 1} von ${count}`}</p>
+                <h2 id="reveal-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso">{count === 0 ? "Hinweis des Tages" : isSummary ? "Dein Paket" : "Deine Zutat"}</h2>
+                {count === 0 && <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="mt-6 flex items-start gap-3 rounded-2xl bg-white p-4 text-left text-sm leading-6 text-espresso"><Sparkles size={18} className="mt-0.5 shrink-0 text-caramel" aria-hidden="true" />{drop.teaser}</motion.p>}
+                {count > 0 && !isSummary && <div className="mt-6 grid min-h-64 place-items-center overflow-hidden" aria-live="polite">
+                    <AnimatePresence mode="wait">
+                        <motion.div key={step} className="flex flex-col items-center" initial={{ y: 40, opacity: 0, scale: 0.6, rotate: -6 }} animate={{ y: 0, opacity: 1, scale: 1, rotate: 0 }} exit={{ y: -30, opacity: 0, scale: 0.8 }} transition={{ delay: step === 0 ? 0.35 : 0.05, type: "spring", stiffness: 200, damping: 15 }}>
+                            <IngredientPicture item={item} size="h-44 w-44" />
+                            <p className="mt-3 text-lg font-semibold text-espresso"><HandicapName item={item} /></p>
+                            <HandicapBadge item={item} />
+                            <p className="text-sm font-semibold text-caramel">{formatAmount(item.amount, item.unit)}</p>
+                        </motion.div>
+                    </AnimatePresence>
+                </div>}
+                {isSummary && <ul className="mt-6 space-y-2 text-left">{drop.items.map((entry, index) => <motion.li key={index} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.08 }} className="flex items-center gap-3 rounded-2xl bg-white p-2.5">
+                    <IngredientPicture item={entry} size="h-12 w-12" />
+                    <span className="min-w-0 flex-1 text-sm font-semibold break-words text-espresso"><HandicapName item={entry} /></span>
+                    <span className="shrink-0 text-sm font-semibold text-caramel">{formatAmount(entry.amount, entry.unit)}</span>
+                </motion.li>)}</ul>}
+                <button type="button" onClick={next} autoFocus className="mt-6 min-h-12 w-full rounded-full bg-espresso px-6 py-3 text-sm font-semibold text-white transition hover:bg-caramel">{buttonLabel}</button>
+                <p className="mt-4 text-xs text-bark">Psst – nur du siehst das.</p>
+            </div>
+        </motion.div>
+    </motion.div>;
 }
 
 const TIP_NOTES: Record<string, string> = {
