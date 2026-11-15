@@ -59,6 +59,14 @@ async def initialize_database() -> None:
         ):
             await connection.execute(text(f"ALTER TABLE events ADD COLUMN IF NOT EXISTS {column}"))
         await connection.execute(text("ALTER TABLE event_tips ADD COLUMN IF NOT EXISTS meta JSONB"))
+        await connection.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS team_key TEXT"))
+        await connection.execute(text("CREATE INDEX IF NOT EXISTS ix_events_team_key ON events (team_key)"))
+        # Events from before team accounts: derive the team from the participants.
+        await connection.execute(text(
+            "UPDATE events e SET team_key = t.key FROM ("
+            " SELECT event_id, string_agg(user_id, ',' ORDER BY user_id) AS key FROM event_participants GROUP BY event_id"
+            ") t WHERE e.id = t.event_id AND e.team_key IS NULL"
+        ))
 
     await backfill_thumbnails()
 

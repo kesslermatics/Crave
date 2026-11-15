@@ -210,10 +210,14 @@ def drop_items_with_images(items: list[dict[str, Any]], images: dict[str, str]) 
     return [public_item(item, images.get(str(item.get("image_key")))) for item in items]
 
 
-async def penalty_bank(session: AsyncSession, creator_id: str) -> int:
-    """Points earned in finished events minus points already spent (or reserved) for handicaps."""
-    earned = await session.scalar(select(func.coalesce(func.sum(Event.penalty_earned), 0)).where(Event.creator_id == creator_id, Event.phase == "finished")) or 0
-    spent = await session.scalar(select(func.coalesce(func.sum(Event.penalty_spent), 0)).where(Event.creator_id == creator_id)) or 0
+def team_key(user_ids: list[str] | set[str]) -> str:
+    return ",".join(sorted(set(user_ids)))
+
+
+async def penalty_bank(session: AsyncSession, key: str) -> int:
+    """A team's account: points earned in its finished events minus points spent (or reserved) on handicaps."""
+    earned = await session.scalar(select(func.coalesce(func.sum(Event.penalty_earned), 0)).where(Event.team_key == key, Event.phase == "finished")) or 0
+    spent = await session.scalar(select(func.coalesce(func.sum(Event.penalty_spent), 0)).where(Event.team_key == key)) or 0
     return max(0, int(earned) - int(spent))
 
 
@@ -357,7 +361,7 @@ async def run_generation(event_id: UUID, ideas: list[str]) -> None:
 
             # Event-wide handicaps change what players see (decoy, scaling, swaps …), so decide them first.
             budget = event.penalty_spent
-            previous = (await session.scalars(select(Event).where(Event.creator_id == event.creator_id, Event.id != event.id).order_by(Event.created_at.desc()).limit(3))).all()
+            previous = (await session.scalars(select(Event).where(Event.team_key == event.team_key, Event.id != event.id).order_by(Event.created_at.desc()).limit(3))).all()
             recent = [str(entry.get("handicap")) for other in previous for entry in (other.handicaps or [])]
             medium_ids = plan_event_handicaps(budget, len(recipes), sum(len(r["ingredients"]) for r in recipes), recent, str(event.id)) if budget >= 3 else []
             display, medium_ids, medium_details = await build_display(recipes, medium_ids, event.theme, str(event.id))
@@ -567,7 +571,8 @@ async def create_event(request: EventCreate, background: BackgroundTasks, sessio
         start_date=request.start_date, cook_date=request.cook_date, status="generating", progress="Wird vorbereitet…",
         images_pending=True, pantry=[], tip_count=0, participants=[admin, *users],
         # Reserve the whole bank now; generation lowers it to what the handicaps actually cost.
-        penalty_spent=await penalty_bank(session, admin.id), handicaps=[],
+        team_key=team_key([admin.id, *(u.id for u in users)]),
+        penalty_spent=await penalty_bank(session, team_key([admin.id, *(u.id for u in users)])), handicaps=[],
     )
     session.add(event)
     await session.commit()
@@ -583,10 +588,11 @@ async def admin_events(session: AsyncSession = Depends(get_session), admin: User
 
 
 @admin_router.get("/penalty-balance")
-async def penalty_balance(session: AsyncSession = Depends(get_session), admin: User = Depends(require_admin)) -> dict[str, Any]:
-    """Points banked from finished events (tips + jury) minus points spent on handicaps."""
-    events = (await session.scalars(select(Event).where(Event.creator_id == admin.id).order_by(Event.created_at.desc()).limit(10))).all()
-    return {"balance": await penalty_bank(session, admin.id),
+async def penalty_balance(participant_ids: str = "", session: AsyncSession = Depends(get_session), admin: User = Depends(require_admin)) -> dict[str, Any]:
+    """Account of the team "admin + the given players" (comma-separated ids)."""
+    key = team_key([admin.id, *(i for i in participant_ids.split(",") if i.strip())])
+    events = (await session.scalars(select(Event).where(Event.team_key == key).order_by(Event.created_at.desc()).limit(10))).all()
+    return {"balance": await penalty_bank(session, key),
             "history": [{"title": e.title, "earned": e.penalty_earned, "spent": e.penalty_spent} for e in events]}
 
 

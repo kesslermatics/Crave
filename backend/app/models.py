@@ -148,6 +148,8 @@ class Event(Base):
     # Penalty points (tips + jury) are banked when the event is finished; later spent on handicaps.
     penalty_earned: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     penalty_spent: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # Sorted participant ids: every distinct group of players has its own penalty account.
+    team_key: Mapped[str | None] = mapped_column(Text, index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # [{handicap, title, ingredient}] actually applied to this event (penalty_spent points).
     handicaps: Mapped[list[dict[str, object]]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
