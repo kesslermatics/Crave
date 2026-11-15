@@ -22,15 +22,21 @@ function HandicapBar({ handicaps, spent }: { handicaps: EventData["handicaps"]; 
     const grouped = [...handicaps.reduce((map, entry) => map.set(entry.handicap, { ...entry, count: (map.get(entry.handicap)?.count ?? 0) + 1 }), new Map<string, EventData["handicaps"][number] & { count: number }>()).values()];
     const order = { heavy: 0, medium: 1, light: 2 } as Record<string, number>;
     grouped.sort((a, b) => order[a.tier] - order[b.tier]);
-    return <section className="mt-4" aria-labelledby="handicap-bar-title">
-        <h2 id="handicap-bar-title" className="text-xs font-bold tracking-[0.16em] text-red-700 uppercase">Aktive Handicaps · {spent} Strafpunkte</h2>
-        <ul className="-mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">{grouped.map((entry) => <li key={entry.handicap} className="shrink-0">
-            <Link href={`/handicaps#${entry.handicap}`} className="flex min-h-11 items-center gap-2 rounded-full border border-espresso/10 bg-white py-1 pr-3.5 pl-1 text-sm font-semibold text-espresso shadow-[0_1px_2px_rgba(66,52,33,0.06)] hover:border-caramel/40">
-                <HandicapIcon id={entry.handicap} tier={entry.tier} title={entry.title} size={15} className="h-8 w-8 rounded-full" />
-                {entry.title}{entry.count > 1 && <span className="text-caramel">×{entry.count}</span>}
-            </Link>
+    return <details className="group mt-4 rounded-3xl border border-red-100 bg-white shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-2 [&::-webkit-details-marker]:hidden">
+            <span className="flex -space-x-2" aria-hidden="true">{grouped.slice(0, 4).map((entry) => <HandicapIcon key={entry.handicap} id={entry.handicap} tier={entry.tier} title={entry.title} size={12} className="h-7 w-7 rounded-full ring-2 ring-white" />)}</span>
+            <span className="min-w-0 flex-1 text-xs font-bold tracking-[0.16em] text-red-700 uppercase">Aktive Handicaps · {spent} Strafpunkte</span>
+            <ChevronDown size={18} className="shrink-0 text-red-700 transition group-open:rotate-180" aria-hidden="true" />
+        </summary>
+        <ul className="divide-y divide-espresso/5 px-4 pb-2">{grouped.map((entry) => <li key={entry.handicap} className="flex gap-3 py-3">
+            <HandicapIcon id={entry.handicap} tier={entry.tier} title={entry.title} size={16} className="h-11 w-11" />
+            <div className="min-w-0">
+                <p className="text-sm font-semibold text-espresso">{entry.title}{entry.count > 1 && <span className="ml-1 text-caramel">×{entry.count}</span>}</p>
+                {entry.description && <p className="mt-0.5 text-sm leading-6 text-bark">{entry.description}</p>}
+                <Link href={`/handicaps#${entry.handicap}`} className="mt-1 inline-flex min-h-8 items-center text-xs font-semibold text-caramel">Im Shop ansehen</Link>
+            </div>
         </li>)}</ul>
-    </section>;
+    </details>;
 }
 
 /** Cook-day ingredient rows, honouring the "geteiltes Bewusstsein" and memory masks. */
@@ -77,33 +83,36 @@ function RevealModal({ drop, onClose }: { drop: Revealed; onClose: () => void })
     return <motion.div className="fixed inset-0 z-[60] flex items-end justify-center bg-espresso/70 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] backdrop-blur-sm sm:items-center sm:p-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
         <motion.div role="dialog" aria-modal="true" aria-labelledby="reveal-title" onClick={(event) => event.stopPropagation()}
             initial={{ scale: 0.4, rotate: -8, opacity: 0 }} animate={{ scale: 1, rotate: 0, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }} transition={{ type: "spring", stiffness: 220, damping: 16 }}
-            className="relative max-h-[88dvh] w-full max-w-sm overflow-x-hidden overflow-y-auto overscroll-contain rounded-[2rem] bg-linen p-6 text-center shadow-2xl sm:p-7">
-            <motion.div aria-hidden="true" className="pointer-events-none absolute -inset-20 bg-[conic-gradient(from_0deg,transparent,rgba(240,180,41,0.35),transparent_40%)]" animate={{ rotate: 360 }} transition={{ duration: 6, repeat: Infinity, ease: "linear" }} />
+            className="relative max-h-[88dvh] w-full max-w-sm overflow-x-hidden overflow-y-auto overscroll-contain rounded-[2rem] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-linen p-6 text-center shadow-2xl sm:p-7">
+            {/* The rotating glow is clipped by its own box, so it never changes the dialog's scroll size (no jumping scrollbar). */}
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden rounded-[2rem]">
+                <motion.div className="absolute -inset-20 bg-[conic-gradient(from_0deg,transparent,rgba(240,180,41,0.35),transparent_40%)]" animate={{ rotate: 360 }} transition={{ duration: 6, repeat: Infinity, ease: "linear" }} />
+            </div>
             <button type="button" onClick={onClose} aria-label="Schließen" className="absolute top-3 right-3 z-10 grid h-11 w-11 place-items-center rounded-full text-bark hover:bg-espresso/5"><X size={18} /></button>
             <div className="relative">
-                <p className="text-xs font-bold tracking-[0.2em] text-caramel uppercase">Tag {drop.day_index + 1}{count > 1 && !isSummary && ` · ${step + 1} von ${count}`}</p>
-                <h2 id="reveal-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso">{count === 0 ? "Hinweis des Tages" : isSummary ? "Dein Paket" : "Deine Zutat"}</h2>
-                {count === 0 && <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="mt-6 flex items-start gap-3 rounded-2xl bg-white p-4 text-left text-sm leading-6 text-espresso"><Sparkles size={18} className="mt-0.5 shrink-0 text-caramel" aria-hidden="true" />{drop.teaser}</motion.p>}
-                {count > 0 && !isSummary && <div className="mt-6 grid min-h-64 place-items-center" aria-live="polite">
-                    <AnimatePresence mode="wait">
-                        <motion.div key={step} className="flex flex-col items-center" initial={{ y: 40, opacity: 0, scale: 0.6, rotate: -6 }} animate={{ y: 0, opacity: 1, scale: 1, rotate: 0 }} exit={{ y: -30, opacity: 0, scale: 0.8 }} transition={{ delay: step === 0 ? 0.35 : 0.05, type: "spring", stiffness: 200, damping: 15 }}>
-                            <IngredientPicture item={item} size="h-44 w-44" />
-                            <p className="mt-3 text-lg font-semibold text-espresso"><HandicapName item={item} /></p>
-                            <HandicapBadge item={item} />
-                            <p className="text-sm font-semibold text-caramel">{formatAmount(item.amount, item.unit)}</p>
-                        </motion.div>
-                    </AnimatePresence>
-                </div>}
-                {isSummary && <ul className="mt-6 space-y-2 text-left">{drop.items.map((entry, index) => <motion.li key={index} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.08 }} className="flex items-center gap-3 rounded-2xl bg-white p-2.5">
-                    <IngredientPicture item={entry} size="h-12 w-12" />
-                    <span className="min-w-0 flex-1 text-sm font-semibold break-words text-espresso"><HandicapName item={entry} /></span>
-                    <span className="shrink-0 text-sm font-semibold text-caramel">{formatAmount(entry.amount, entry.unit)}</span>
-                </motion.li>)}</ul>}
-                <button type="button" onClick={next} autoFocus className="mt-6 min-h-12 w-full rounded-full bg-espresso px-6 py-3 text-sm font-semibold text-white transition hover:bg-caramel">{buttonLabel}</button>
-                <p className="mt-4 text-xs text-bark">Psst – nur du siehst das.</p>
-            </div>
-        </motion.div>
-    </motion.div>;
+                <p className="text-xs font-b<div className=" mt-6 grid min-h-64 place-items-center overflow-hidden" aria-live="polite">t > 1 && !isSummary && ` · ${step + 1} von ${count}`}</p>
+            <h2 id="reveal-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso">{count === 0 ? "Hinweis des Tages" : isSummary ? "Dein Paket" : "Deine Zutat"}</h2>
+            {count === 0 && <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="mt-6 flex items-start gap-3 rounded-2xl bg-white p-4 text-left text-sm leading-6 text-espresso"><Sparkles size={18} className="mt-0.5 shrink-0 text-caramel" aria-hidden="true" />{drop.teaser}</motion.p>}
+            {count > 0 && !isSummary && <div className="mt-6 grid min-h-64 place-items-center" aria-live="polite">
+                <AnimatePresence mode="wait">
+                    <motion.div key={step} className="flex flex-col items-center" initial={{ y: 40, opacity: 0, scale: 0.6, rotate: -6 }} animate={{ y: 0, opacity: 1, scale: 1, rotate: 0 }} exit={{ y: -30, opacity: 0, scale: 0.8 }} transition={{ delay: step === 0 ? 0.35 : 0.05, type: "spring", stiffness: 200, damping: 15 }}>
+                        <IngredientPicture item={item} size="h-44 w-44" />
+                        <p className="mt-3 text-lg font-semibold text-espresso"><HandicapName item={item} /></p>
+                        <HandicapBadge item={item} />
+                        <p className="text-sm font-semibold text-caramel">{formatAmount(item.amount, item.unit)}</p>
+                    </motion.div>
+                </AnimatePresence>
+            </div>}
+            {isSummary && <ul className="mt-6 space-y-2 text-left">{drop.items.map((entry, index) => <motion.li key={index} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.08 }} className="flex items-center gap-3 rounded-2xl bg-white p-2.5">
+                <IngredientPicture item={entry} size="h-12 w-12" />
+                <span className="min-w-0 flex-1 text-sm font-semibold break-words text-espresso"><HandicapName item={entry} /></span>
+                <span className="shrink-0 text-sm font-semibold text-caramel">{formatAmount(entry.amount, entry.unit)}</span>
+            </motion.li>)}</ul>}
+            <button type="button" onClick={next} autoFocus className="mt-6 min-h-12 w-full rounded-full bg-espresso px-6 py-3 text-sm font-semibold text-white transition hover:bg-caramel">{buttonLabel}</button>
+            <p className="mt-4 text-xs text-bark">Psst – nur du siehst das.</p>
+        </div>
+    </motion.div>
+    </motion.div >;
 }
 
 const TIP_NOTES: Record<string, string> = {

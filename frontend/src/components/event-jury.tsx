@@ -78,7 +78,7 @@ function JuryReveal({ event }: { event: EventDetail }) {
     const animate = !done;
 
     if (!done && countdown > 0) {
-        return <div className="mt-6 grid min-h-72 place-items-center rounded-3xl bg-espresso p-8 text-center text-white" role="status" aria-live="polite">
+        return <div className="mt-6 grid min-h-72 place-items-center overflow-hidden rounded-3xl bg-espresso p-8 text-center text-white" role="status" aria-live="polite">
             <div>
                 <p className="text-sm font-semibold tracking-[0.2em] text-saffron uppercase">Die Jury hat entschieden</p>
                 <AnimatePresence mode="popLayout">

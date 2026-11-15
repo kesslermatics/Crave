@@ -15,7 +15,7 @@ export type EventDetail = {
     id: string; title: string; theme: string; status: "generating" | "active" | "failed"; progress: string; images_pending: boolean; is_creator: boolean; server_now: string;
     /** Client-side only: server clock minus device clock, set when the event is loaded. */
     clock_offset?: number;
-    handicap_count: number; penalty_spent: number; handicaps: { handicap: string; title: string; tier: "light" | "medium"; ingredient?: string; detail?: string }[]; effects: string[]; mixed_ingredients: EventIngredient[] | null;
+    handicap_count: number; penalty_spent: number; handicaps: { handicap: string; title: string; tier: "light" | "medium" | "heavy"; ingredient?: string; detail?: string; description?: string }[]; effects: string[]; mixed_ingredients: EventIngredient[] | null;
     game: { blind_revealed: boolean; memory_phase: "waiting" | "visible" | "expired" | null; memory_started_at: string | null; memory_seconds: number; role: "A" | "B"; can_ask: boolean; asker_email: string };
     phase: EventPhase; verdict: JuryVerdict | null; jury_error: string | null; submissions: EventSubmission[]; penalty_earned: number; participant_count: number; categories: string[];
     start_date: string; cook_date: string; today: string; days_total: number; is_cook_day: boolean; pantry: string[];

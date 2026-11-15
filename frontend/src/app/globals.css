@@ -66,6 +66,17 @@
 
 html {
   scroll-behavior: smooth;
+  /* iOS must not inflate text sizes on rotation */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Nothing may ever widen the page beyond the screen (that forced pinch-zooming out on phones).
+   "clip" instead of "hidden" keeps position: sticky working. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 section[id] {
