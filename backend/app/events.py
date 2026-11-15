@@ -719,7 +719,10 @@ async def event_view(event_id: UUID, session: AsyncSession = Depends(get_session
         "tip_count": event.tip_count, "recipes": recipes,
         "handicap_count": len(event.handicaps or []), "penalty_spent": event.penalty_spent,
         # Medium details (which ingredient was swapped …) would solve the puzzle, so they stay secret until the end.
-        "handicaps": [{k: v for k, v in entry.items() if k != "hidden_keys" and (finished or k != "detail")} for entry in (event.handicaps or [])] if cook_day else [],
+        # Titles are always visible; which ingredient a light handicap hit is shown from the cook day on,
+        # event-wide details (which ingredient was swapped …) only after the event.
+        "handicaps": [{k: v for k, v in entry.items() if k != "hidden_keys" and (finished or k != "detail") and (cook_day or k != "ingredient")}
+                      for entry in (event.handicaps or [])],
         "effects": sorted(effects) if cook_day else [], "mixed_ingredients": mixed,
         "game": {"blind_revealed": not blind, "memory_phase": memory_phase, "memory_started_at": state.get("memory_started_at"),
                  "memory_seconds": MEMORY_SECONDS, "role": "A" if my_role % 2 == 0 else "B", "can_ask": can_ask, "asker_email": asker_email},

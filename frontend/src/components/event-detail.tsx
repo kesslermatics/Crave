@@ -8,12 +8,30 @@ import { ArrowLeft, ArrowUp, Gift, Lightbulb, Lock, Sparkles, Trash2, X } from "
 import { DropItem, EventDetail as EventData, EventIngredient, eventApi, formatAmount, formatDay } from "@/lib/events";
 import { EventJury } from "@/components/event-jury";
 import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
+import { HandicapIcon } from "@/components/handicap-icons";
 import { FormattedMessage } from "@/components/formatted-message";
 import { LoadingIndicator } from "@/components/loading-indicator";
 
 type Revealed = { day_index: number; items: DropItem[]; teaser: string | null };
 
 const IngredientPicture = HandicapPicture;
+
+/** All active handicaps at the top of the event: horizontally scrollable chips that link into the shop. */
+function HandicapBar({ handicaps, spent }: { handicaps: EventData["handicaps"]; spent: number }) {
+    // Several light handicaps of the same kind show up once with a counter.
+    const grouped = [...handicaps.reduce((map, entry) => map.set(entry.handicap, { ...entry, count: (map.get(entry.handicap)?.count ?? 0) + 1 }), new Map<string, EventData["handicaps"][number] & { count: number }>()).values()];
+    const order = { heavy: 0, medium: 1, light: 2 } as Record<string, number>;
+    grouped.sort((a, b) => order[a.tier] - order[b.tier]);
+    return <section className="mt-4" aria-labelledby="handicap-bar-title">
+        <h2 id="handicap-bar-title" className="text-xs font-bold tracking-[0.16em] text-red-700 uppercase">Aktive Handicaps · {spent} Strafpunkte</h2>
+        <ul className="-mx-5 mt-2 flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:px-0">{grouped.map((entry) => <li key={entry.handicap} className="shrink-0">
+            <Link href={`/handicaps#${entry.handicap}`} className="flex min-h-11 items-center gap-2 rounded-full border border-espresso/10 bg-white py-1 pr-3.5 pl-1 text-sm font-semibold text-espresso shadow-[0_1px_2px_rgba(66,52,33,0.06)] hover:border-caramel/40">
+                <HandicapIcon id={entry.handicap} tier={entry.tier} title={entry.title} size={15} className="h-8 w-8 rounded-full" />
+                {entry.title}{entry.count > 1 && <span className="text-caramel">×{entry.count}</span>}
+            </Link>
+        </li>)}</ul>
+    </section>;
+}
 
 /** Cook-day ingredient rows, honouring the "geteiltes Bewusstsein" and memory masks. */
 function CookIngredients({ items }: { items: EventIngredient[] }) {
@@ -40,7 +58,7 @@ function MemoryTimer({ startedAt, seconds, onExpire }: { startedAt: string; seco
 }
 
 function HandicapBadge({ item }: { item: DropItem }) {
-    return item.handicap ? <span className="mt-1 inline-block rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-bold text-red-700">Handicap: {item.handicap.title}</span> : null;
+    return item.handicap ? <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-red-50 py-0.5 pr-2.5 pl-0.5 text-[11px] font-bold text-red-700"><HandicapIcon id={item.handicap.id} title={item.handicap.title} tier={item.handicap.id === "schwarzes_loch" ? "medium" : "light"} size={11} className="h-5 w-5 rounded-full" />{item.handicap.title}</span> : null;
 }
 
 function RevealModal({ drop, onClose }: { drop: Revealed; onClose: () => void }) {
@@ -184,7 +202,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
         <p className="mt-6 text-xs font-bold tracking-[0.2em] text-caramel uppercase">{event.categories.join(" · ")}</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-espresso sm:text-4xl">{event.title}</h1>
         <p className="mt-2 text-sm text-bark">Kochtag: {formatDay(event.cook_date, { weekday: "long", day: "numeric", month: "long" })}{!event.is_cook_day && daysLeft > 0 && ` · noch ${daysLeft} ${daysLeft === 1 ? "Tag" : "Tage"}`}</p>
-        {event.handicap_count > 0 && <Link href="/handicaps" className="mt-3 inline-flex min-h-9 items-center rounded-full bg-red-50 px-3 text-xs font-bold text-red-700">{event.handicap_count} {event.handicap_count === 1 ? "Handicap" : "Handicaps"} im Spiel · {event.penalty_spent} Strafpunkte eingelöst</Link>}
+        {event.handicaps.length > 0 && <HandicapBar handicaps={event.handicaps} spent={event.penalty_spent} />}
         {error && <p role="alert" className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
 
         {event.status === "generating" && <div className="mt-10 rounded-3xl bg-white p-6"><LoadingIndicator label={event.progress || "Das Event wird vorbereitet…"} /></div>}
@@ -194,7 +212,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
             <h2 id="reveal-heading" className="sr-only">Die Gerichte</h2>
             {activeMedium.length > 0 && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="active-handicaps">
                 <h3 id="active-handicaps" className="text-sm font-semibold text-espresso">Heute im Spiel</h3>
-                <ul className="mt-2 space-y-2 text-sm text-bark">{activeMedium.map((entry) => <li key={entry.handicap}><span className="font-semibold text-red-700">{entry.title}</span>{entry.detail ? ` · ${entry.detail}` : ""}</li>)}</ul>
+                <ul className="mt-2 space-y-2 text-sm text-bark">{activeMedium.map((entry) => <li key={entry.handicap} className="flex items-start gap-3"><HandicapIcon id={entry.handicap} tier={entry.tier} title={entry.title} size={14} className="h-7 w-7 rounded-lg" /><span><span className="font-semibold text-red-700">{entry.title}</span>{entry.detail ? ` · ${entry.detail}` : ""}</span></li>)}</ul>
             </section>}
             {event.game.memory_phase === "waiting" && <div className="mb-8 rounded-3xl bg-espresso p-6 text-center text-white">
                 <p className="text-sm">Memory-Modus: Nach dem Start habt ihr {event.game.memory_seconds / 60} Minuten, um euch alle Zutaten zu merken.</p>
@@ -220,9 +238,9 @@ export function EventDetail({ eventId }: { eventId: string }) {
                         : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
                 </div>
             </motion.article>)}
-            {event.handicaps.some((entry) => entry.tier === "light") && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="handicaps-title">
+            {event.handicaps.some((entry) => entry.tier === "light" && entry.ingredient) && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="handicaps-title">
                 <h3 id="handicaps-title" className="text-sm font-semibold text-espresso">Aufgelöst: Zutaten-Handicaps</h3>
-                <ul className="mt-2 space-y-1 text-sm text-bark">{event.handicaps.filter((entry) => entry.tier === "light").map((entry, index) => <li key={index}><span className="font-semibold text-espresso">{entry.ingredient}</span> · {entry.title}</li>)}</ul>
+                <ul className="mt-2 space-y-1 text-sm text-bark">{event.handicaps.filter((entry) => entry.tier === "light").map((entry, index) => <li key={index} className="flex items-center gap-3"><HandicapIcon id={entry.handicap} tier="light" title={entry.title} size={14} className="h-7 w-7 rounded-lg" /><span><span className="font-semibold text-espresso">{entry.ingredient}</span> · {entry.title}</span></li>)}</ul>
             </section>}
             {(event.phase === "cooking" || event.tips.length > 0) && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={event.phase !== "cooking" || !event.game.can_ask || (event.effects.includes("ein_schuss") && event.tip_count >= 1)} effects={event.effects} askerEmail={event.game.asker_email} />}
             {!event.game.blind_revealed && event.phase === "cooking" ? <section className="mt-14 rounded-3xl bg-espresso p-6 text-center text-white" aria-label="Blindverkostung">

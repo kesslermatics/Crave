@@ -1,9 +1,10 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, Skull } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { DropItem, eventApi, formatAmount } from "@/lib/events";
 import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
+import { HandicapIcon } from "@/components/handicap-icons";
 import { LoadingIndicator } from "@/components/loading-indicator";
 
 type ShopItem = { id: string; cost: number; title: string; description: string; example: DropItem | null; example_text: string };
@@ -23,15 +24,16 @@ export function HandicapShop() {
         <p className="mt-2 text-sm leading-6 text-bark">Strafpunkte aus Tipps und Jury landen auf eurem Konto. Beim nächsten Event gibt Crave sie komplett aus: Leichte Handicaps verschleiern je eine Zutat (Vorschau: Tomate, 200 g), mittlere verändern das ganze Event.</p>
         {error && <p role="alert" className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
         {!tiers && !error && <div className="mt-8"><LoadingIndicator label="Shop wird geladen…" /></div>}
-        {tiers?.map((tier) => <section key={tier.tier} className="mt-10" aria-labelledby={`tier-${tier.tier}`}>
+        {tiers && <nav aria-label="Stufen" className="sticky top-16 z-10 -mx-5 mt-6 flex gap-2 bg-linen/95 px-5 py-3 backdrop-blur sm:mx-0 sm:px-0">{tiers.map((tier) => <a key={tier.tier} href={`#tier-${tier.tier}`} className="flex min-h-11 items-center rounded-full border border-espresso/10 bg-white px-4 text-sm font-semibold text-espresso">{tier.label} <span className="ml-1.5 text-caramel">{tier.items[0]?.cost}</span></a>)}</nav>}
+        {tiers?.map((tier) => <section key={tier.tier} className="mt-10 scroll-mt-32" aria-labelledby={`tier-${tier.tier}`}>
             <h2 id={`tier-${tier.tier}`} className="flex items-baseline gap-2 text-xl font-semibold text-espresso">{tier.label}{tier.items[0] && <span className="text-sm font-semibold text-caramel">{tier.items[0].cost} {tier.items[0].cost === 1 ? "Strafpunkt" : "Strafpunkte"}</span>}</h2>
             {tier.items.length === 0 ? <p className="mt-3 rounded-3xl border border-dashed border-espresso/15 p-5 text-sm text-bark">Kommt bald.</p>
                 : <ul className="mt-4 grid gap-3 sm:grid-cols-2">{tier.items.map((item) => {
                     const example = item.example ? { ...item.example, image_data: SAMPLE_IMAGE } : null;
-                    return <li key={item.id} className="flex gap-4 rounded-3xl bg-white p-4 shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
-                        {example ? <HandicapPicture item={example} size="h-20 w-20" /> : <span className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-700" aria-hidden="true"><Skull size={26} /></span>}
+                    return <li key={item.id} id={item.id} className="flex scroll-mt-32 gap-4 rounded-3xl bg-white p-4 target:ring-4 target:ring-caramel/30 shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
+                        {example ? <HandicapPicture item={example} size="h-20 w-20" /> : <HandicapIcon id={item.id} tier={tier.tier} title={item.title} size={30} className="h-20 w-20" />}
                         <div className="min-w-0">
-                            <h3 className="font-semibold text-espresso">{item.title}</h3>
+                            <h3 className="flex items-center gap-2 font-semibold text-espresso">{example && <HandicapIcon id={item.id} tier={tier.tier} title={item.title} size={13} className="h-6 w-6 rounded-lg" />}{item.title}</h3>
                             <p className="mt-1 text-xs leading-5 text-bark">{item.description}</p>
                             {example ? <p className="mt-2 truncate text-sm font-semibold text-espresso"><HandicapName item={example} /> <span className="text-caramel">· {formatAmount(example.amount, example.unit)}</span></p>
                                 : item.example_text && <p className="mt-2 text-sm font-semibold text-espresso">{item.example_text}</p>}

@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, Check, Gift, Sparkles, Trash2, Users } from "lucide-react";
 import { EVENT_CATEGORIES, eventApi, formatDay } from "@/lib/events";
 import { LoadingIndicator } from "@/components/loading-indicator";
+import { AdminHandicapIcons } from "@/components/admin-handicap-icons";
 
 type AdminUser = { id: string; email: string };
 type AdminEvent = { id: string; title: string; status: string; progress: string; images_pending: boolean; start_date: string; cook_date: string; participants: string[] };
@@ -171,5 +172,6 @@ export function AdminEvents() {
                 <button type="button" onClick={() => removeEvent(event.id)} aria-label={`${event.title} löschen`} className="-mr-2 -mt-2 grid h-11 w-11 shrink-0 place-items-center rounded-full text-bark hover:bg-red-50 hover:text-red-700"><Trash2 size={16} aria-hidden="true" /></button>
             </li>)}</ul>}
         </section>
+        <AdminHandicapIcons />
     </main>;
 }

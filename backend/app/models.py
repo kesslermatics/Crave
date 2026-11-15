@@ -220,3 +220,15 @@ class EventSubmission(Base):
     image_data: Mapped[str] = mapped_column(Text, nullable=False)
     taste_rating: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class HandicapIconImage(Base):
+    """AI-generated icon per handicap. The style sample is stored under id "__preview__" (handicap in `source`)."""
+
+    __tablename__ = "handicap_icons"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    image_data: Mapped[str] = mapped_column(Text, nullable=False)
+    approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    style_hint: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source: Mapped[str] = mapped_column(String(40), nullable=False, default="")

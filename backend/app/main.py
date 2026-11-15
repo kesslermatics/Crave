@@ -1,5 +1,6 @@
 """FastAPI entry point for the Crave culinary engine."""
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -13,6 +14,7 @@ from app.ai import router as ai_router
 from app.config import get_settings
 from app.db import get_engine, initialize_database
 from app.handicaps import router as handicaps_router
+from app.handicap_icons import fill_missing_icons, router as handicap_icons_router
 from app.events import admin_router as events_admin_router, fail_stale_generations, router as events_router
 from app.recipes import router as recipes_router
 from app.shopping import router as shopping_router
@@ -31,6 +33,8 @@ async def lifespan(_: FastAPI):
     else:
         await initialize_database()
         await fail_stale_generations()
+        # Fill in missing handicap icons in the approved style without delaying startup.
+        icon_task = asyncio.create_task(fill_missing_icons())
     yield
     if settings.database_url is not None:
         await get_engine().dispose()
@@ -67,6 +71,7 @@ app.include_router(recipes_router)
 app.include_router(shopping_router)
 app.include_router(events_router)
 app.include_router(events_admin_router)
+app.include_router(handicap_icons_router)
 app.include_router(handicaps_router)
 
 
