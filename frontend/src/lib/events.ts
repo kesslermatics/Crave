@@ -6,13 +6,15 @@ export type EventIngredient = { name: string; amount: number | null; unit: strin
 export type EventRecipe = { id: string; instructions: string[]; category: string; title: string; description: string; image_data: string | null; servings: number; total_time_minutes: number; difficulty: string; ingredients: EventIngredient[] };
 export type JuryVerdict = {
     recipes: { recipe_id: string; title: string; verdict: string; penalty: number; categories: { name: string; penalty: number; comment: string }[] }[];
-    summary: string; penalty: number;
+    summary: string; penalty: number; reveal_at?: string;
 };
 export type EventSubmission = { email: string; is_me: boolean; recipe_id: string; taste_rating: number | null; image_data: string | null };
 export type EventPhase = "cooking" | "judging" | "judged" | "finished";
 export type EventTip = { email: string; question: string; answer: string; truth: number | null; created_at: string };
 export type EventDetail = {
-    id: string; title: string; theme: string; status: "generating" | "active" | "failed"; progress: string; images_pending: boolean; is_creator: boolean;
+    id: string; title: string; theme: string; status: "generating" | "active" | "failed"; progress: string; images_pending: boolean; is_creator: boolean; server_now: string;
+    /** Client-side only: server clock minus device clock, set when the event is loaded. */
+    clock_offset?: number;
     handicap_count: number; penalty_spent: number; handicaps: { handicap: string; title: string; tier: "light" | "medium"; ingredient?: string; detail?: string }[]; effects: string[]; mixed_ingredients: EventIngredient[] | null;
     game: { blind_revealed: boolean; memory_phase: "waiting" | "visible" | "expired" | null; memory_started_at: string | null; memory_seconds: number; role: "A" | "B"; can_ask: boolean; asker_email: string };
     phase: EventPhase; verdict: JuryVerdict | null; jury_error: string | null; submissions: EventSubmission[]; penalty_earned: number; participant_count: number; categories: string[];

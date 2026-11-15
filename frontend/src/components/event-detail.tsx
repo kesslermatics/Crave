@@ -174,13 +174,25 @@ export function EventDetail({ eventId }: { eventId: string }) {
         } catch (caught) { setError((caught as Error).message); setDeleting(false); }
     }
 
-    const load = useCallback(() => eventApi<EventData>(`/events/${eventId}`).then(setEvent).catch((caught: Error) => setError(caught.message)), [eventId]);
+    const load = useCallback(() => eventApi<EventData>(`/events/${eventId}`)
+        // Measure the clock offset here (outside render) so synced animations use server time.
+        .then((data) => setEvent({ ...data, clock_offset: Date.parse(data.server_now) - Date.now() }))
+        .catch((caught: Error) => setError(caught.message)), [eventId]);
     useEffect(() => { void load(); }, [load]);
+    // Live updates: poll a tiny signature and only reload the full event when something changed
+    // (partner revealed or handed in, tip asked, jury started/finished, images ready …).
+    const live = event !== null && event.phase !== "finished" && event.status !== "failed";
     useEffect(() => {
-        if (event?.status !== "generating" && !event?.images_pending && event?.phase !== "judging") return;
-        const timer = window.setInterval(load, 4000);
+        if (!live) return;
+        let last = "";
+        const timer = window.setInterval(() => {
+            void eventApi<{ signature: string }>(`/events/${eventId}/pulse`).then(({ signature }) => {
+                if (last && signature !== last) void load();
+                last = signature;
+            }).catch(() => undefined);
+        }, 4000);
         return () => window.clearInterval(timer);
-    }, [event?.status, event?.images_pending, event?.phase, load]);
+    }, [live, eventId, load]);
 
     async function reveal(dayIndex: number) {
         setOpening(dayIndex); setError("");

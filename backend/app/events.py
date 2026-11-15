@@ -181,6 +181,7 @@ def event_effects(event: Event) -> set[str]:
 
 
 MEMORY_SECONDS = 180
+REVEAL_DELAY_SECONDS = 8
 
 
 def roles(event: Event) -> dict[str, int]:
@@ -516,7 +517,9 @@ Antworte nur mit JSON: {{"recipes":[{{"recipe_index":int,"categories":[{{"name":
                 categories = normalise_penalties(entry.categories if entry else [])
                 judged.append({"recipe_id": str(recipe.id), "title": recipe.title, "categories": categories,
                                "verdict": entry.verdict.strip() if entry else "", "penalty": sum(c["penalty"] for c in categories)})
-            event.verdict = {"recipes": judged, "summary": result.summary.strip(), "penalty": sum(r["penalty"] for r in judged)}
+            # Every device starts the reveal show at the same server time (see EventJury on the client).
+            reveal_at = (datetime.now(timezone.utc) + timedelta(seconds=REVEAL_DELAY_SECONDS)).isoformat()
+            event.verdict = {"recipes": judged, "summary": result.summary.strip(), "penalty": sum(r["penalty"] for r in judged), "reveal_at": reveal_at}
             event.phase, event.jury_error = "judged", None
             await session.commit()
     except Exception:
@@ -716,7 +719,7 @@ async def event_view(event_id: UUID, session: AsyncSession = Depends(get_session
 
     return {
         "id": str(event.id), "title": event.title, "theme": event.theme,
-        "phase": event.phase, "verdict": event.verdict, "jury_error": event.jury_error, "submissions": submissions,
+        "phase": event.phase, "verdict": event.verdict, "server_now": datetime.now(timezone.utc).isoformat(), "jury_error": event.jury_error, "submissions": submissions,
         "penalty_earned": event.penalty_earned, "participant_count": len(event.participants), "status": event.status, "progress": event.progress,
         "images_pending": event.images_pending, "is_creator": event.creator_id == user.id,
         "categories": [CATEGORIES[c][0] for c in event.categories if c in CATEGORIES],
@@ -889,3 +892,16 @@ async def game_action(event_id: UUID, action: str, session: AsyncSession = Depen
     event.game_state = state  # new dict so the JSONB change is written
     await session.commit()
     return state
+
+
+@router.get("/{event_id}/pulse")
+async def event_pulse(event_id: UUID, session: AsyncSession = Depends(get_session), user: User = Depends(get_current_user)) -> dict[str, str]:
+    """Tiny change signature so clients can poll cheaply and only reload the full (image-heavy) event on change."""
+    event = await load_event_for(session, event_id, user)
+    submissions = (await session.execute(
+        select(func.count(), func.max(EventSubmission.created_at)).select_from(EventSubmission).where(EventSubmission.event_id == event.id)
+    )).one()
+    revealed = await session.scalar(select(func.count()).select_from(EventDrop).where(EventDrop.event_id == event.id, EventDrop.revealed_at.is_not(None)))
+    parts = [event.status, str(event.images_pending), event.phase, str(event.tip_count), str(submissions[0]), str(submissions[1]),
+             str(revealed), json.dumps(event.game_state or {}, sort_keys=True), today_berlin().isoformat(), str(bool(event.jury_error))]
+    return {"signature": "|".join(parts), "server_now": datetime.now(timezone.utc).isoformat()}
