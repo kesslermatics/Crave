@@ -64,7 +64,13 @@ function RevealModal({ drop, onClose }: { drop: Revealed; onClose: () => void })
     </motion.div>;
 }
 
-function TipChat({ eventId, tips, tipCount, onTip, readOnly = false }: { eventId: string; tips: EventData["tips"]; tipCount: number; onTip: () => void; readOnly?: boolean }) {
+const TIP_NOTES: Record<string, string> = {
+    telegramm: "Telegramm-Stil: höchstens 3 Wörter pro Antwort.",
+    philosoph: "Küchen-Philosoph: Antworten kommen nur als Metapher oder Rätsel.",
+    ein_schuss: "Ein-Schuss-Joker: Ihr habt genau eine Frage – danach ist der Chat zu.",
+};
+
+function TipChat({ eventId, tips, tipCount, onTip, readOnly = false, effects = [] }: { eventId: string; tips: EventData["tips"]; tipCount: number; onTip: () => void; readOnly?: boolean; effects?: string[] }) {
     const [question, setQuestion] = useState("");
     const [sending, setSending] = useState(false);
     const [error, setError] = useState("");
@@ -84,7 +90,8 @@ function TipChat({ eventId, tips, tipCount, onTip, readOnly = false }: { eventId
             <h2 id="tips-title" className="flex items-center gap-2 text-xl font-semibold text-espresso"><Lightbulb size={20} className="text-caramel" aria-hidden="true" /> {readOnly ? "Tipps" : "Tipp holen"}</h2>
             <span className="rounded-full bg-espresso px-3 py-1 text-xs font-bold text-white">{tipCount} {tipCount === 1 ? "Tipp" : "Tipps"} genutzt</span>
         </div>
-        <p className="mt-1 text-sm text-bark">Jede Antwort ist genau ein Hinweis und zählt für euer ganzes Event.</p>
+        <p className="mt-1 text-sm text-bark">Jede Antwort zählt als Tipp für euer ganzes Event.</p>
+        {effects.filter((effect) => TIP_NOTES[effect]).map((effect) => <p key={effect} className="mt-2 rounded-2xl bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700">{TIP_NOTES[effect]}</p>)}
         <div className="mt-6 space-y-4" aria-live="polite">{tips.map((tip) => <div key={tip.created_at} className="space-y-2">
             <p className="ml-auto max-w-[85%] rounded-[1.25rem] rounded-br-md bg-espresso px-4 py-2.5 text-sm text-white sm:max-w-md"><span className="block text-[10px] font-bold opacity-70">{tip.email}</span>{tip.question}</p>
             <div className="max-w-[85%] rounded-[1.25rem] rounded-bl-md bg-white px-4 py-2.5 text-sm leading-6 text-espresso shadow-[0_1px_2px_rgba(66,52,33,0.06)] sm:max-w-md"><FormattedMessage text={tip.answer} /></div>
@@ -135,6 +142,8 @@ export function EventDetail({ eventId }: { eventId: string }) {
     if (!event) return <main className="mx-auto max-w-3xl px-5 pt-10 sm:px-8">{error ? <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p> : <LoadingIndicator label="Event wird geladen…" />}</main>;
 
     const myItems = event.drops.flatMap((drop) => drop.items ?? []);
+    const embargo = event.effects.includes("bild_embargo") && event.phase !== "finished";
+    const activeMedium = event.handicaps.filter((entry) => entry.tier === "medium");
     const daysLeft = Math.round((Date.parse(event.cook_date) - Date.parse(event.today)) / 86_400_000);
 
     return <main className="mx-auto max-w-3xl px-5 pt-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-8">
@@ -150,24 +159,33 @@ export function EventDetail({ eventId }: { eventId: string }) {
 
         {event.status === "active" && event.is_cook_day && <section className="mt-10" aria-labelledby="reveal-heading">
             <h2 id="reveal-heading" className="sr-only">Die Gerichte</h2>
+            {activeMedium.length > 0 && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="active-handicaps">
+                <h3 id="active-handicaps" className="text-sm font-semibold text-espresso">Heute im Spiel</h3>
+                <ul className="mt-2 space-y-2 text-sm text-bark">{activeMedium.map((entry) => <li key={entry.handicap}><span className="font-semibold text-red-700">{entry.title}</span>{entry.detail ? ` · ${entry.detail}` : ""}</li>)}</ul>
+            </section>}
+            {event.mixed_ingredients && <section className="-mx-2 mb-8 rounded-[2rem] bg-white p-5 shadow-[0_12px_40px_rgba(66,52,33,0.12)] sm:mx-0 sm:p-8" aria-labelledby="mixed-title">
+                <h3 id="mixed-title" className="font-semibold text-espresso">Alle Zutaten – bunt gemischt</h3>
+                <p className="mt-1 text-xs text-bark">Kategorien-Salat: Welche Zutat gehört in welches Gericht?</p>
+                <ul className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">{event.mixed_ingredients.map((ingredient, i) => <li key={i} className="flex justify-between gap-3 border-b border-espresso/5 py-1.5"><span className="min-w-0 break-words text-espresso">{ingredient.name}</span><span className="shrink-0 font-semibold text-caramel">{formatAmount(ingredient.amount, ingredient.unit)}</span></li>)}</ul>
+            </section>}
             {event.recipes.map((recipe, index) => <motion.article key={recipe.title} initial={{ opacity: 0, y: 40, scale: 0.92 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.2 + index * 0.5, type: "spring", stiffness: 120 }} className="-mx-2 mb-8 overflow-hidden rounded-[2rem] bg-white sm:mx-0 shadow-[0_12px_40px_rgba(66,52,33,0.12)]">
-                {recipe.image_data && <img src={recipe.image_data} alt={recipe.title} className="aspect-square w-full object-cover sm:aspect-[16/10]" />}
+                {recipe.image_data && <div className="overflow-hidden"><img src={recipe.image_data} alt={embargo ? "Verschwommenes Bild des Gerichts" : recipe.title} className={`aspect-square w-full object-cover sm:aspect-[16/10] ${embargo ? "scale-125 blur-[25px]" : ""}`} /></div>}
                 <div className="p-5 sm:p-8">
                     <p className="text-xs font-bold tracking-[0.2em] text-caramel uppercase">{recipe.category}</p>
                     <h3 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso sm:text-3xl">{recipe.title}</h3>
                     <p className="mt-3 text-sm leading-6 text-bark">{recipe.description}</p>
                     <p className="mt-3 text-xs font-semibold text-bark">{recipe.servings} Portionen · ca. {recipe.total_time_minutes} Min.</p>
-                    <ul className="mt-5 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">{recipe.ingredients.map((ingredient) => <li key={ingredient.name} className="flex justify-between gap-3 border-b border-espresso/5 py-1.5"><span className="min-w-0 break-words text-espresso">{ingredient.name}</span><span className="shrink-0 font-semibold text-caramel">{formatAmount(ingredient.amount, ingredient.unit)}</span></li>)}</ul>
+                    {recipe.ingredients.length > 0 && <ul className="mt-5 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">{recipe.ingredients.map((ingredient, i) => <li key={i} className="flex justify-between gap-3 border-b border-espresso/5 py-1.5"><span className="min-w-0 break-words text-espresso">{ingredient.name}</span><span className="shrink-0 font-semibold text-caramel">{formatAmount(ingredient.amount, ingredient.unit)}</span></li>)}</ul>}
                     {recipe.instructions.length > 0
                         ? <details className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso"><summary className="min-h-8 cursor-pointer font-semibold">Originalzubereitung</summary><ol className="mt-2 list-decimal space-y-2 pl-5 leading-6">{recipe.instructions.map((step) => <li key={step}>{step}</li>)}</ol></details>
                         : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
                 </div>
             </motion.article>)}
-            {event.handicaps.length > 0 && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="handicaps-title">
-                <h3 id="handicaps-title" className="text-sm font-semibold text-espresso">Aufgelöst: eure Handicaps</h3>
-                <ul className="mt-2 space-y-1 text-sm text-bark">{event.handicaps.map((entry, index) => <li key={index}><span className="font-semibold text-espresso">{entry.ingredient}</span> · {entry.title}</li>)}</ul>
+            {event.handicaps.some((entry) => entry.tier === "light") && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="handicaps-title">
+                <h3 id="handicaps-title" className="text-sm font-semibold text-espresso">Aufgelöst: Zutaten-Handicaps</h3>
+                <ul className="mt-2 space-y-1 text-sm text-bark">{event.handicaps.filter((entry) => entry.tier === "light").map((entry, index) => <li key={index}><span className="font-semibold text-espresso">{entry.ingredient}</span> · {entry.title}</li>)}</ul>
             </section>}
-            {(event.phase === "cooking" || event.tips.length > 0) && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={event.phase !== "cooking"} />}
+            {(event.phase === "cooking" || event.tips.length > 0) && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={event.phase !== "cooking" || (event.effects.includes("ein_schuss") && event.tip_count >= 1)} effects={event.effects} />}
             <EventJury event={event} onChange={load} />
         </section>}
 

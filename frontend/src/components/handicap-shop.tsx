@@ -1,12 +1,12 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Skull } from "lucide-react";
 import { DropItem, eventApi, formatAmount } from "@/lib/events";
 import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
 import { LoadingIndicator } from "@/components/loading-indicator";
 
-type ShopItem = { id: string; cost: number; title: string; description: string; example: DropItem };
+type ShopItem = { id: string; cost: number; title: string; description: string; example: DropItem | null; example_text: string };
 type Tier = { tier: string; label: string; items: ShopItem[] };
 
 // Sample "photo" for the previews, so every visual effect can be seen without a generated image.
@@ -20,20 +20,21 @@ export function HandicapShop() {
     return <main className="mx-auto max-w-3xl px-5 pt-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-8">
         <Link href="/events" className="-ml-1 flex min-h-11 w-fit items-center gap-1 px-1 text-sm font-semibold text-caramel"><ArrowLeft size={15} aria-hidden="true" /> Events</Link>
         <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-espresso sm:text-4xl">Handicap-Shop</h1>
-        <p className="mt-2 text-sm leading-6 text-bark">Strafpunkte aus Tipps und Jury landen auf eurem Konto. Beim nächsten Event gibt Crave sie komplett aus: Jedes Handicap verschleiert genau eine Zutat. Die Vorschau zeigt eine Tomate (200 g).</p>
+        <p className="mt-2 text-sm leading-6 text-bark">Strafpunkte aus Tipps und Jury landen auf eurem Konto. Beim nächsten Event gibt Crave sie komplett aus: Leichte Handicaps verschleiern je eine Zutat (Vorschau: Tomate, 200 g), mittlere verändern das ganze Event.</p>
         {error && <p role="alert" className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
         {!tiers && !error && <div className="mt-8"><LoadingIndicator label="Shop wird geladen…" /></div>}
         {tiers?.map((tier) => <section key={tier.tier} className="mt-10" aria-labelledby={`tier-${tier.tier}`}>
             <h2 id={`tier-${tier.tier}`} className="flex items-baseline gap-2 text-xl font-semibold text-espresso">{tier.label}{tier.items[0] && <span className="text-sm font-semibold text-caramel">{tier.items[0].cost} {tier.items[0].cost === 1 ? "Strafpunkt" : "Strafpunkte"}</span>}</h2>
             {tier.items.length === 0 ? <p className="mt-3 rounded-3xl border border-dashed border-espresso/15 p-5 text-sm text-bark">Kommt bald.</p>
                 : <ul className="mt-4 grid gap-3 sm:grid-cols-2">{tier.items.map((item) => {
-                    const example = { ...item.example, image_data: SAMPLE_IMAGE };
+                    const example = item.example ? { ...item.example, image_data: SAMPLE_IMAGE } : null;
                     return <li key={item.id} className="flex gap-4 rounded-3xl bg-white p-4 shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
-                        <HandicapPicture item={example} size="h-20 w-20" />
+                        {example ? <HandicapPicture item={example} size="h-20 w-20" /> : <span className="grid h-20 w-20 shrink-0 place-items-center rounded-2xl bg-red-50 text-red-700" aria-hidden="true"><Skull size={26} /></span>}
                         <div className="min-w-0">
                             <h3 className="font-semibold text-espresso">{item.title}</h3>
                             <p className="mt-1 text-xs leading-5 text-bark">{item.description}</p>
-                            <p className="mt-2 truncate text-sm font-semibold text-espresso"><HandicapName item={example} /> <span className="text-caramel">· {formatAmount(example.amount, example.unit)}</span></p>
+                            {example ? <p className="mt-2 truncate text-sm font-semibold text-espresso"><HandicapName item={example} /> <span className="text-caramel">· {formatAmount(example.amount, example.unit)}</span></p>
+                                : item.example_text && <p className="mt-2 text-sm font-semibold text-espresso">{item.example_text}</p>}
                         </div>
                     </li>;
                 })}</ul>}
