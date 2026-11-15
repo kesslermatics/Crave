@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowUp, Gift, Lightbulb, Lock, Sparkles, Trash2, X } from "lucide-react";
 import { DropItem, EventDetail as EventData, eventApi, formatAmount, formatDay } from "@/lib/events";
+import { EventJury } from "@/components/event-jury";
 import { FormattedMessage } from "@/components/formatted-message";
 import { LoadingIndicator } from "@/components/loading-indicator";
 
@@ -61,7 +62,7 @@ function RevealModal({ drop, onClose }: { drop: Revealed; onClose: () => void })
     </motion.div>;
 }
 
-function TipChat({ eventId, tips, tipCount, onTip }: { eventId: string; tips: EventData["tips"]; tipCount: number; onTip: () => void }) {
+function TipChat({ eventId, tips, tipCount, onTip, readOnly = false }: { eventId: string; tips: EventData["tips"]; tipCount: number; onTip: () => void; readOnly?: boolean }) {
     const [question, setQuestion] = useState("");
     const [sending, setSending] = useState(false);
     const [error, setError] = useState("");
@@ -78,7 +79,7 @@ function TipChat({ eventId, tips, tipCount, onTip }: { eventId: string; tips: Ev
     }
     return <section className="mt-14 border-t border-espresso/10 pt-10" aria-labelledby="tips-title">
         <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="tips-title" className="flex items-center gap-2 text-xl font-semibold text-espresso"><Lightbulb size={20} className="text-caramel" aria-hidden="true" /> Tipp holen</h2>
+            <h2 id="tips-title" className="flex items-center gap-2 text-xl font-semibold text-espresso"><Lightbulb size={20} className="text-caramel" aria-hidden="true" /> {readOnly ? "Tipps" : "Tipp holen"}</h2>
             <span className="rounded-full bg-espresso px-3 py-1 text-xs font-bold text-white">{tipCount} {tipCount === 1 ? "Tipp" : "Tipps"} genutzt</span>
         </div>
         <p className="mt-1 text-sm text-bark">Jede Antwort ist genau ein Hinweis und zählt für euer ganzes Event.</p>
@@ -89,10 +90,10 @@ function TipChat({ eventId, tips, tipCount, onTip }: { eventId: string; tips: Ev
             {sending && <LoadingIndicator label="Crave überlegt einen Hinweis…" />}
         </div>
         {error && <p role="alert" className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
-        <form onSubmit={submit} className="mt-6 flex items-center gap-2 rounded-full border border-espresso/10 bg-white py-1.5 pr-1.5 pl-5 focus-within:border-caramel/50 focus-within:ring-4 focus-within:ring-caramel/10">
+        {!readOnly && <form onSubmit={submit} className="mt-6 flex items-center gap-2 rounded-full border border-espresso/10 bg-white py-1.5 pr-1.5 pl-5 focus-within:border-caramel/50 focus-within:ring-4 focus-within:ring-caramel/10">
             <input value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={800} placeholder="z. B. Wie heiß sollte der Ofen sein?" aria-label="Frage für einen Tipp" enterKeyHint="send" className="min-w-0 flex-1 bg-transparent py-2 text-espresso outline-none placeholder:text-bark/50 text-base sm:text-sm" />
             <button disabled={sending || !question.trim()} aria-label="Tipp anfragen" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-caramel text-white disabled:bg-espresso/15"><ArrowUp size={17} strokeWidth={2.5} aria-hidden="true" /></button>
-        </form>
+        </form>}
     </section>;
 }
 
@@ -116,10 +117,10 @@ export function EventDetail({ eventId }: { eventId: string }) {
     const load = useCallback(() => eventApi<EventData>(`/events/${eventId}`).then(setEvent).catch((caught: Error) => setError(caught.message)), [eventId]);
     useEffect(() => { void load(); }, [load]);
     useEffect(() => {
-        if (event?.status !== "generating" && !event?.images_pending) return;
+        if (event?.status !== "generating" && !event?.images_pending && event?.phase !== "judging") return;
         const timer = window.setInterval(load, 4000);
         return () => window.clearInterval(timer);
-    }, [event?.status, event?.images_pending, load]);
+    }, [event?.status, event?.images_pending, event?.phase, load]);
 
     async function reveal(dayIndex: number) {
         setOpening(dayIndex); setError("");
@@ -154,10 +155,13 @@ export function EventDetail({ eventId }: { eventId: string }) {
                     <p className="mt-3 text-sm leading-6 text-bark">{recipe.description}</p>
                     <p className="mt-3 text-xs font-semibold text-bark">{recipe.servings} Portionen · ca. {recipe.total_time_minutes} Min.</p>
                     <ul className="mt-5 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">{recipe.ingredients.map((ingredient) => <li key={ingredient.name} className="flex justify-between gap-3 border-b border-espresso/5 py-1.5"><span className="min-w-0 break-words text-espresso">{ingredient.name}</span><span className="shrink-0 font-semibold text-caramel">{formatAmount(ingredient.amount, ingredient.unit)}</span></li>)}</ul>
-                    <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>
+                    {recipe.instructions.length > 0
+                        ? <details className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso"><summary className="min-h-8 cursor-pointer font-semibold">Originalzubereitung</summary><ol className="mt-2 list-decimal space-y-2 pl-5 leading-6">{recipe.instructions.map((step) => <li key={step}>{step}</li>)}</ol></details>
+                        : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
                 </div>
             </motion.article>)}
-            <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} />
+            {(event.phase === "cooking" || event.tips.length > 0) && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={event.phase !== "cooking"} />}
+            <EventJury event={event} onChange={load} />
         </section>}
 
         {event.status === "active" && <>

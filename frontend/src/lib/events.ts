@@ -2,14 +2,21 @@ import { apiUrl } from "@/lib/api";
 
 export type DropItem = { name: string; amount: number; unit: string; image_key: string; image_data: string | null };
 export type Drop = { day_index: number; date: string; state: "locked" | "available" | "revealed"; items?: DropItem[]; teaser?: string | null };
-export type EventRecipe = { category: string; title: string; description: string; image_data: string | null; servings: number; total_time_minutes: number; difficulty: string; ingredients: { name: string; amount: number; unit: string }[] };
+export type EventRecipe = { id: string; instructions: string[]; category: string; title: string; description: string; image_data: string | null; servings: number; total_time_minutes: number; difficulty: string; ingredients: { name: string; amount: number; unit: string }[] };
+export type JuryVerdict = {
+    recipes: { recipe_id: string; title: string; verdict: string; penalty: number; categories: { name: string; penalty: number; comment: string }[] }[];
+    summary: string; penalty: number;
+};
+export type EventSubmission = { email: string; is_me: boolean; recipe_id: string; taste_rating: number | null; image_data: string | null };
+export type EventPhase = "cooking" | "judging" | "judged" | "finished";
 export type EventTip = { email: string; question: string; answer: string; created_at: string };
 export type EventDetail = {
-    id: string; title: string; theme: string; status: "generating" | "active" | "failed"; progress: string; images_pending: boolean; is_creator: boolean; categories: string[];
+    id: string; title: string; theme: string; status: "generating" | "active" | "failed"; progress: string; images_pending: boolean; is_creator: boolean;
+    phase: EventPhase; verdict: JuryVerdict | null; jury_error: string | null; submissions: EventSubmission[]; penalty_earned: number; participant_count: number; categories: string[];
     start_date: string; cook_date: string; today: string; days_total: number; is_cook_day: boolean; pantry: string[];
     drops: Drop[]; stats: { email: string; is_me: boolean; revealed: number; tips: number }[]; tip_count: number; recipes: EventRecipe[]; tips: EventTip[];
 };
-export type EventSummary = { id: string; title: string; status: string; start_date: string; cook_date: string; is_cook_day: boolean; open_drops: number };
+export type EventSummary = { id: string; title: string; status: string; start_date: string; cook_date: string; is_cook_day: boolean; open_drops: number; phase: EventPhase };
 
 export const EVENT_CATEGORIES = [
     { key: "fruehstueck", label: "Frühstück" },

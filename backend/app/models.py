@@ -141,6 +141,14 @@ class Event(Base):
     # Basics everyone is expected to have (salt, oil …); never part of a daily drop.
     pantry: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     tip_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # After the cook day: cooking -> judging -> judged -> finished.
+    phase: Mapped[str] = mapped_column(String(16), nullable=False, default="cooking", server_default="cooking")
+    verdict: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    jury_error: Mapped[str | None] = mapped_column(Text)
+    # Penalty points (tips + jury) are banked when the event is finished; later spent on handicaps.
+    penalty_earned: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    penalty_spent: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     participants: Mapped[list[User]] = relationship(secondary=event_participants, lazy="selectin")
 
@@ -191,3 +199,18 @@ class IngredientImage(Base):
 
     key: Mapped[str] = mapped_column(String(120), primary_key=True)
     image_data: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class EventSubmission(Base):
+    """A player's photo of the finished dish plus their own taste rating, judged by the AI jury."""
+
+    __tablename__ = "event_submissions"
+    __table_args__ = (Index("ix_event_submissions_unique", "event_id", "user_id", "event_recipe_id", unique=True),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    event_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    event_recipe_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("event_recipes.id", ondelete="CASCADE"), nullable=False)
+    image_data: Mapped[str] = mapped_column(Text, nullable=False)
+    taste_rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

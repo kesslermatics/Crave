@@ -62,10 +62,12 @@ export function AdminEvents() {
     const [ideas, setIdeas] = useState<string[]>([]);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
+    const [penaltyBalance, setPenaltyBalance] = useState<number | null>(null);
 
     const loadEvents = useCallback(() => eventApi<AdminEvent[]>("/admin/events").then(setEvents).catch(() => undefined), []);
     useEffect(() => {
         eventApi<AdminUser[]>("/admin/users").then(setUsers).catch((caught: Error) => setError(caught.message));
+        eventApi<{ balance: number }>("/admin/penalty-balance").then((result) => setPenaltyBalance(result.balance)).catch(() => undefined);
         void loadEvents();
     }, [loadEvents]);
     // Poll while something is still being generated.
@@ -139,6 +141,7 @@ export function AdminEvents() {
                 <label className="block text-sm font-semibold text-espresso">Start (erste Zutat)<input type="date" required min={todayIso()} value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${input} mt-1.5`} /></label>
                 <label className="block text-sm font-semibold text-espresso">Kochtag (Reveal)<input type="date" required min={startDate} value={cookDate} onChange={(e) => setCookDate(e.target.value)} className={`${input} mt-1.5`} /></label>
             </div>
+            {penaltyBalance !== null && <p className="rounded-2xl bg-cream/60 px-4 py-3 text-sm text-espresso">Euer Strafpunktekonto: <span className="font-semibold">{penaltyBalance}</span> · wird bald in Handicaps eingelöst.</p>}
             {days > 0 && <p className="text-sm text-bark">{days} Aufdeck-Tage × {selected.length + 1} Personen = {slots} Pakete. {slots > estimated * 1.3 && <span className="font-semibold text-caramel">Bei ca. {estimated} Zutaten werden viele Tage nur Hinweise statt Zutaten enthalten.</span>}</p>}
             <button disabled={busy || categories.length === 0 || days < 1} className="flex w-full items-center justify-center gap-2 rounded-full bg-espresso px-6 py-3.5 sm:w-auto text-sm font-semibold text-white transition hover:bg-caramel disabled:bg-espresso/20">
                 {busy ? <LoadingIndicator light label="Ideen werden gesammelt…" /> : <><Sparkles size={16} aria-hidden="true" /> Ideen anzeigen</>}

@@ -46,6 +46,16 @@ async def initialize_database() -> None:
         await connection.execute(text("CREATE INDEX IF NOT EXISTS ix_recipes_owner_id ON recipes (owner_id)"))
         # Downscaled preview for list views; backfilled below for rows that predate it.
         await connection.execute(text("ALTER TABLE recipes ADD COLUMN IF NOT EXISTS thumbnail_data TEXT"))
+        # Event jury + penalty bank (events table predates these columns).
+        for column in (
+            "phase VARCHAR(16) NOT NULL DEFAULT 'cooking'",
+            "verdict JSONB",
+            "jury_error TEXT",
+            "penalty_earned INTEGER NOT NULL DEFAULT 0",
+            "penalty_spent INTEGER NOT NULL DEFAULT 0",
+            "finished_at TIMESTAMPTZ",
+        ):
+            await connection.execute(text(f"ALTER TABLE events ADD COLUMN IF NOT EXISTS {column}"))
 
     await backfill_thumbnails()
 
