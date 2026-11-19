@@ -297,10 +297,11 @@ class Decoys(BaseModel):
     decoys: list[Decoy] = Field(default_factory=list)
 
 
-async def _add_decoys(recipes: list[dict[str, Any]], display: list[dict[str, Any]], theme: str, count: int) -> list[tuple[int, str]]:
+async def _add_decoys(recipes: list[dict[str, Any]], display: list[dict[str, Any]], theme: str, count: int, exclusions: str = "") -> list[tuple[int, str]]:
     """Red herrings: plausible-looking ingredients that would ruin the dish. Recorded in recipe["decoys"] for the jury."""
     dishes = json.dumps([{"index": i, "title": r["title"], "ingredients": [x["name"] for x in d["ingredients"]]} for i, (r, d) in enumerate(zip(recipes, display))], ensure_ascii=False)
-    prompt = f"""Kochspiel zum Thema "{theme}". Gerichte: {dishes}
+    forbidden = f"\nDiese Zutaten sind für die Spieler strikt verboten (Allergien), auch als Falle: {json.dumps(exclusions.strip(), ensure_ascii=False)}" if exclusions.strip() else ""
+    prompt = f"""Kochspiel zum Thema "{theme}". Gerichte: {dishes}{forbidden}
 Erfinde genau {count} "Kuckuckseier": Zutaten, die zum Thema und Geschmacksprofil zu passen scheinen, das Gericht aber in Geschmack, Konsistenz oder Struktur ruinieren würden oder völlig deplatziert sind (z. B. Koriander in italienischer Pasta, Rosinen im herzhaften Gratin, Gelatine im Rührteig). Keine davon darf schon in der Liste stehen. Gib plausible Mengen an.
 Antworte nur mit JSON: {{"decoys":[{{"recipe_index":int,"name":str,"amount":float,"unit":str}}]}}"""
     try:
@@ -320,7 +321,7 @@ Antworte nur mit JSON: {{"decoys":[{{"recipe_index":int,"name":str,"amount":floa
     return added
 
 
-async def build_display(recipes: list[dict[str, Any]], ids: list[str], theme: str, seed: str) -> tuple[list[dict[str, Any]], list[str], dict[str, str]]:
+async def build_display(recipes: list[dict[str, Any]], ids: list[str], theme: str, seed: str, exclusions: str = "") -> tuple[list[dict[str, Any]], list[str], dict[str, str]]:
     """Return per-recipe {servings, ingredients} as the players will see them, the handicaps that could actually
     be applied, and a short secret detail per handicap (revealed after the event)."""
     rng = random.Random(f"{seed}-display")
@@ -331,7 +332,7 @@ async def build_display(recipes: list[dict[str, Any]], ids: list[str], theme: st
     for handicap_id, count in (("kuckucksei", 1), ("dreifach_saboteur", 3)):
         if handicap_id not in ids:
             continue
-        added = await _add_decoys(recipes, display, theme, count)
+        added = await _add_decoys(recipes, display, theme, count, exclusions)
         if added:
             applied.append(handicap_id)
             details[handicap_id] = "Falsche Zutaten: " + ", ".join(f"{name} (in „{recipes[index]['title']}“)" for index, name in added)

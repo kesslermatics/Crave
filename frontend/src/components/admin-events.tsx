@@ -64,6 +64,8 @@ export function AdminEvents() {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
     const [penaltyBalance, setPenaltyBalance] = useState<number | null>(null);
+    // Per team: loaded with the balance when the players are picked, saved again when the event starts.
+    const [exclusions, setExclusions] = useState("");
 
     const loadEvents = useCallback(() => eventApi<AdminEvent[]>("/admin/events").then(setEvents).catch(() => undefined), []);
     useEffect(() => {
@@ -74,8 +76,8 @@ export function AdminEvents() {
     useEffect(() => {
         if (selected.length === 0) return;
         let current = true;
-        eventApi<{ balance: number }>(`/admin/penalty-balance?participant_ids=${encodeURIComponent(selected.join(","))}`)
-            .then((result) => { if (current) setPenaltyBalance(result.balance); }).catch(() => undefined);
+        eventApi<{ balance: number; exclusions: string }>(`/admin/penalty-balance?participant_ids=${encodeURIComponent(selected.join(","))}`)
+            .then((result) => { if (current) { setPenaltyBalance(result.balance); setExclusions(result.exclusions); } }).catch(() => undefined);
         return () => { current = false; };
     }, [selected]);
     // Poll while something is still being generated.
@@ -93,7 +95,7 @@ export function AdminEvents() {
         event.preventDefault();
         setBusy(true); setError("");
         try {
-            const result = await eventApi<{ ideas: string[] }>("/admin/events/ideas", { method: "POST", body: { theme, categories } });
+            const result = await eventApi<{ ideas: string[] }>("/admin/events/ideas", { method: "POST", body: { theme, categories, exclusions } });
             setIdeas(result.ideas); setStep("ideas");
         } catch (caught) { setError((caught as Error).message); } finally { setBusy(false); }
     }
@@ -101,7 +103,7 @@ export function AdminEvents() {
     async function startEvent() {
         setBusy(true); setError("");
         try {
-            await eventApi("/admin/events", { method: "POST", body: { title, theme, categories, start_date: startDate, cook_date: cookDate, participant_ids: selected, ideas } });
+            await eventApi("/admin/events", { method: "POST", body: { title, theme, categories, start_date: startDate, cook_date: cookDate, participant_ids: selected, ideas, exclusions } });
             setStep("users"); setSelected([]); setTitle(""); setTheme(""); setIdeas([]); setCookDate("");
             await loadEvents();
         } catch (caught) { setError((caught as Error).message); } finally { setBusy(false); }
@@ -138,6 +140,10 @@ export function AdminEvents() {
             <button type="button" onClick={() => setStep("users")} className="-ml-1 flex min-h-11 items-center gap-1 px-1 text-sm font-semibold text-caramel"><ArrowLeft size={15} aria-hidden="true" /> Mitspieler</button>
             <label className="block text-sm font-semibold text-espresso">Titel<input required maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="z. B. Advents-Kochduell" className={`${input} mt-1.5`} /></label>
             <label className="block text-sm font-semibold text-espresso">Thema<textarea required minLength={3} maxLength={1500} rows={3} value={theme} onChange={(e) => setTheme(e.target.value)} placeholder="z. B. Weihnachtsadvent, gemütlich, gerne etwas mit Zimt" className={`${input} mt-1.5`} /></label>
+            <label className="block text-sm font-semibold text-espresso">Darf nicht rein (Allergien, Unverträglichkeiten)
+                <textarea maxLength={600} rows={2} value={exclusions} onChange={(e) => setExclusions(e.target.value)} placeholder="z. B. Haselnüsse, Sellerie, Koriander" className={`${input} mt-1.5`} />
+                <span className="mt-1 block text-xs font-normal text-bark">Wird für dieses Team gespeichert und gilt für Rezepte, Ideen und Fallen-Zutaten.</span>
+            </label>
             <fieldset>
                 <legend className="text-sm font-semibold text-espresso">Was wird gekocht?</legend>
                 <div className="mt-2 flex flex-wrap gap-2">{EVENT_CATEGORIES.map((category) => {

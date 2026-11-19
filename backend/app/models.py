@@ -234,3 +234,27 @@ class HandicapIconImage(Base):
     approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     style_hint: Mapped[str] = mapped_column(Text, nullable=False, default="")
     source: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+
+
+class EventGuess(Base):
+    """A player's guess which dish is hidden behind a recipe, made on the cook day before the reveal."""
+
+    __tablename__ = "event_guesses"
+    __table_args__ = (Index("ix_event_guesses_unique", "event_id", "user_id", "event_recipe_id", unique=True),)
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    event_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("events.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    event_recipe_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("event_recipes.id", ondelete="CASCADE"), nullable=False)
+    guess: Mapped[str] = mapped_column(String(200), nullable=False)
+    correct: Mapped[bool | None] = mapped_column(Boolean)
+    reason: Mapped[str | None] = mapped_column(Text)
+
+
+class TeamSetting(Base):
+    """Settings shared by one group of players, e.g. ingredients they must never get (allergies)."""
+
+    __tablename__ = "team_settings"
+
+    team_key: Mapped[str] = mapped_column(Text, primary_key=True)
+    exclusions: Mapped[str] = mapped_column(Text, nullable=False, default="")

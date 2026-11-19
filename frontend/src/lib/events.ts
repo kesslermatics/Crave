@@ -9,10 +9,16 @@ export type JuryVerdict = {
     summary: string; penalty: number; reveal_at?: string;
 };
 export type EventSubmission = { email: string; is_me: boolean; recipe_id: string; taste_rating: number | null; image_data: string | null };
+export type EventGuessing = {
+    open: boolean; done: boolean; judging: boolean; judging_since: string | null; error: string | null; reveal_at: string | null;
+    mine: Record<string, string>; submitted: string[]; complete: string[]; bonus: number;
+    results: { recipe_id: string; email: string; is_me: boolean; guess: string; correct: boolean | null; reason: string | null }[];
+};
 export type EventPhase = "cooking" | "judging" | "judged" | "finished";
 export type EventTip = { email: string; question: string; answer: string; truth: number | null; created_at: string };
 export type EventDetail = {
     id: string; title: string; theme: string; status: "generating" | "active" | "failed"; progress: string; images_pending: boolean; is_creator: boolean; server_now: string;
+    guessing: EventGuessing | null;
     /** Client-side only: server clock minus device clock, set when the event is loaded. */
     clock_offset?: number;
     handicap_count: number; penalty_spent: number; handicaps: { handicap: string; title: string; tier: "light" | "medium" | "heavy"; ingredient?: string; detail?: string; description?: string }[]; effects: string[]; mixed_ingredients: EventIngredient[] | null;

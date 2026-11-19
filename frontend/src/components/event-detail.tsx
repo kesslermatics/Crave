@@ -6,6 +6,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowUp, ChevronDown, Gift, Lightbulb, Lock, Sparkles, Trash2, X } from "lucide-react";
 import { DropItem, EventDetail as EventData, EventIngredient, eventApi, formatAmount, formatDay } from "@/lib/events";
+import { EventGuess } from "@/components/event-guess";
 import { EventJury } from "@/components/event-jury";
 import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
 import { HandicapIcon } from "@/components/handicap-icons";
@@ -235,39 +236,42 @@ export function EventDetail({ eventId }: { eventId: string }) {
                 <h3 id="active-handicaps" className="text-sm font-semibold text-espresso">Heute im Spiel</h3>
                 <ul className="mt-2 space-y-2 text-sm text-bark">{activeMedium.map((entry) => <li key={entry.handicap} className="flex items-start gap-3"><HandicapIcon id={entry.handicap} tier={entry.tier} title={entry.title} size={14} className="h-7 w-7 rounded-lg" /><span><span className="font-semibold text-red-700">{entry.title}</span>{entry.detail ? ` · ${entry.detail}` : ""}</span></li>)}</ul>
             </section>}
-            {event.game.memory_phase === "waiting" && <div className="mb-8 rounded-3xl bg-espresso p-6 text-center text-white">
-                <p className="text-sm">Memory-Modus: Nach dem Start habt ihr {event.game.memory_seconds / 60} Minuten, um euch alle Zutaten zu merken.</p>
-                <button type="button" disabled={gameBusy} onClick={() => gameAction("memory-start")} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-bold text-espresso disabled:opacity-60 sm:w-auto">Kochen starten</button>
-            </div>}
-            {event.game.memory_phase === "visible" && event.game.memory_started_at && <MemoryTimer startedAt={event.game.memory_started_at} seconds={event.game.memory_seconds} onExpire={load} />}
-            {event.effects.includes("geteiltes_bewusstsein") && event.phase === "cooking" && <p className="mb-6 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">Geteiltes Bewusstsein: Du siehst {event.game.role === "A" ? "nur die Namen" : "nur Bilder und Mengen"}. Den Rest kennt dein Gegenüber.</p>}
-            {event.mixed_ingredients && <section className="-mx-2 mb-8 rounded-[2rem] bg-white p-5 shadow-[0_12px_40px_rgba(66,52,33,0.12)] sm:mx-0 sm:p-8" aria-labelledby="mixed-title">
-                <h3 id="mixed-title" className="font-semibold text-espresso">Alle Zutaten – bunt gemischt</h3>
-                <p className="mt-1 text-xs text-bark">Kategorien-Salat: Welche Zutat gehört in welches Gericht?</p>
-                <CookIngredients items={event.mixed_ingredients} />
-            </section>}
-            {event.recipes.map((recipe, index) => <motion.article key={recipe.title} initial={{ opacity: 0, y: 40, scale: 0.92 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.2 + index * 0.5, type: "spring", stiffness: 120 }} className="-mx-2 mb-8 overflow-hidden rounded-[2rem] bg-white sm:mx-0 shadow-[0_12px_40px_rgba(66,52,33,0.12)]">
-                {recipe.image_data && <div className="overflow-hidden"><img src={recipe.image_data} alt={embargo ? "Verschwommenes Bild des Gerichts" : recipe.title} className={`aspect-square w-full object-cover sm:aspect-[16/10] ${embargo ? "scale-125 blur-[25px]" : ""}`} /></div>}
-                <div className="p-5 sm:p-8">
-                    <p className="text-xs font-bold tracking-[0.2em] text-caramel uppercase">{recipe.category}</p>
-                    <h3 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso sm:text-3xl">{recipe.title}</h3>
-                    <p className="mt-3 text-sm leading-6 text-bark">{recipe.description}</p>
-                    <p className="mt-3 text-xs font-semibold text-bark">{recipe.servings} Portionen · ca. {recipe.total_time_minutes} Min.</p>
-                    {recipe.ingredients.length > 0 && <CookIngredients items={recipe.ingredients} />}
-                    {recipe.instructions.length > 0
-                        ? <details className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso"><summary className="min-h-8 cursor-pointer font-semibold">Originalzubereitung</summary><ol className="mt-2 list-decimal space-y-2 pl-5 leading-6">{recipe.instructions.map((step) => <li key={step}>{step}</li>)}</ol></details>
-                        : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
-                </div>
-            </motion.article>)}
-            {event.handicaps.some((entry) => entry.tier === "light" && entry.ingredient) && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="handicaps-title">
-                <h3 id="handicaps-title" className="text-sm font-semibold text-espresso">Aufgelöst: Zutaten-Handicaps</h3>
-                <ul className="mt-2 space-y-1 text-sm text-bark">{event.handicaps.filter((entry) => entry.tier === "light").map((entry, index) => <li key={index} className="flex items-center gap-3"><HandicapIcon id={entry.handicap} tier="light" title={entry.title} size={14} className="h-7 w-7 rounded-lg" /><span><span className="font-semibold text-espresso">{entry.ingredient}</span> · {entry.title}</span></li>)}</ul>
-            </section>}
-            {(event.phase === "cooking" || event.tips.length > 0) && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={event.phase !== "cooking" || !event.game.can_ask || (event.effects.includes("ein_schuss") && event.tip_count >= 1)} effects={event.effects} askerEmail={event.game.asker_email} />}
-            {!event.game.blind_revealed && event.phase === "cooking" ? <section className="mt-14 rounded-3xl bg-espresso p-6 text-center text-white" aria-label="Blindverkostung">
-                <p className="text-sm">Blindverkostung: Erst wenn ihr fertig gekocht habt, wird aufgedeckt, was es sein sollte. Danach geht es zur Jury.</p>
-                <button type="button" disabled={gameBusy} onClick={() => { if (window.confirm("Fertig gekocht? Dann jetzt aufdecken.")) void gameAction("blind-reveal"); }} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-bold text-espresso disabled:opacity-60 sm:w-auto">Gericht aufdecken</button>
-            </section> : <EventJury event={event} onChange={load} />}
+            {event.guessing && <EventGuess event={event} onChange={load} />}
+            {!(event.guessing && !event.guessing.done) && <>
+                {event.game.memory_phase === "waiting" && <div className="mb-8 rounded-3xl bg-espresso p-6 text-center text-white">
+                    <p className="text-sm">Memory-Modus: Nach dem Start habt ihr {event.game.memory_seconds / 60} Minuten, um euch alle Zutaten zu merken.</p>
+                    <button type="button" disabled={gameBusy} onClick={() => gameAction("memory-start")} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-bold text-espresso disabled:opacity-60 sm:w-auto">Kochen starten</button>
+                </div>}
+                {event.game.memory_phase === "visible" && event.game.memory_started_at && <MemoryTimer startedAt={event.game.memory_started_at} seconds={event.game.memory_seconds} onExpire={load} />}
+                {event.effects.includes("geteiltes_bewusstsein") && event.phase === "cooking" && <p className="mb-6 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">Geteiltes Bewusstsein: Du siehst {event.game.role === "A" ? "nur die Namen" : "nur Bilder und Mengen"}. Den Rest kennt dein Gegenüber.</p>}
+                {event.mixed_ingredients && <section className="-mx-2 mb-8 rounded-[2rem] bg-white p-5 shadow-[0_12px_40px_rgba(66,52,33,0.12)] sm:mx-0 sm:p-8" aria-labelledby="mixed-title">
+                    <h3 id="mixed-title" className="font-semibold text-espresso">Alle Zutaten – bunt gemischt</h3>
+                    <p className="mt-1 text-xs text-bark">Kategorien-Salat: Welche Zutat gehört in welches Gericht?</p>
+                    <CookIngredients items={event.mixed_ingredients} />
+                </section>}
+                {event.recipes.map((recipe, index) => <motion.article key={recipe.title} initial={{ opacity: 0, y: 40, scale: 0.92 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.2 + index * 0.5, type: "spring", stiffness: 120 }} className="-mx-2 mb-8 overflow-hidden rounded-[2rem] bg-white sm:mx-0 shadow-[0_12px_40px_rgba(66,52,33,0.12)]">
+                    {recipe.image_data && <div className="overflow-hidden"><img src={recipe.image_data} alt={embargo ? "Verschwommenes Bild des Gerichts" : recipe.title} className={`aspect-square w-full object-cover sm:aspect-[16/10] ${embargo ? "scale-125 blur-[25px]" : ""}`} /></div>}
+                    <div className="p-5 sm:p-8">
+                        <p className="text-xs font-bold tracking-[0.2em] text-caramel uppercase">{recipe.category}</p>
+                        <h3 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso sm:text-3xl">{recipe.title}</h3>
+                        <p className="mt-3 text-sm leading-6 text-bark">{recipe.description}</p>
+                        <p className="mt-3 text-xs font-semibold text-bark">{recipe.servings} Portionen · ca. {recipe.total_time_minutes} Min.</p>
+                        {recipe.ingredients.length > 0 && <CookIngredients items={recipe.ingredients} />}
+                        {recipe.instructions.length > 0
+                            ? <details className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso"><summary className="min-h-8 cursor-pointer font-semibold">Originalzubereitung</summary><ol className="mt-2 list-decimal space-y-2 pl-5 leading-6">{recipe.instructions.map((step) => <li key={step}>{step}</li>)}</ol></details>
+                            : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
+                    </div>
+                </motion.article>)}
+                {event.handicaps.some((entry) => entry.tier === "light" && entry.ingredient) && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="handicaps-title">
+                    <h3 id="handicaps-title" className="text-sm font-semibold text-espresso">Aufgelöst: Zutaten-Handicaps</h3>
+                    <ul className="mt-2 space-y-1 text-sm text-bark">{event.handicaps.filter((entry) => entry.tier === "light").map((entry, index) => <li key={index} className="flex items-center gap-3"><HandicapIcon id={entry.handicap} tier="light" title={entry.title} size={14} className="h-7 w-7 rounded-lg" /><span><span className="font-semibold text-espresso">{entry.ingredient}</span> · {entry.title}</span></li>)}</ul>
+                </section>}
+                {(event.phase === "cooking" || event.tips.length > 0) && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={event.phase !== "cooking" || !event.game.can_ask || (event.effects.includes("ein_schuss") && event.tip_count >= 1)} effects={event.effects} askerEmail={event.game.asker_email} />}
+                {!event.game.blind_revealed && event.phase === "cooking" ? <section className="mt-14 rounded-3xl bg-espresso p-6 text-center text-white" aria-label="Blindverkostung">
+                    <p className="text-sm">Blindverkostung: Erst wenn ihr fertig gekocht habt, wird aufgedeckt, was es sein sollte. Danach geht es zur Jury.</p>
+                    <button type="button" disabled={gameBusy} onClick={() => { if (window.confirm("Fertig gekocht? Dann jetzt aufdecken.")) void gameAction("blind-reveal"); }} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-bold text-espresso disabled:opacity-60 sm:w-auto">Gericht aufdecken</button>
+                </section> : <EventJury event={event} onChange={load} />}
+            </>}
         </section>}
 
         {event.status === "active" && <>

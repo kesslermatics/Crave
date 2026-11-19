@@ -90,6 +90,7 @@ function JuryReveal({ event }: { event: EventDetail }) {
     }
 
     const juryTotal = verdict.penalty;
+    const guessBonus = event.guessing?.bonus ?? 0;
     return <div className="mt-6 space-y-6" aria-live={animate ? "polite" : undefined}>
         {verdict.recipes.map((judged, dish) => {
             if (!isShown((step) => step.kind === "dish" && step.dish === dish)) return null;
@@ -123,7 +124,8 @@ function JuryReveal({ event }: { event: EventDetail }) {
             <motion.div initial={animate ? { opacity: 0, y: 12 } : false} animate={{ opacity: 1, y: 0 }} transition={{ delay: animate ? 0.4 : 0 }} className="rounded-3xl bg-cream/60 p-5 text-sm text-espresso">
                 <p className="flex justify-between"><span>Jury</span><span className="font-semibold"><Counter value={juryTotal} animate={animate} /></span></p>
                 <p className="mt-1 flex justify-between"><span>Tipps</span><span className="font-semibold">{event.tip_count}</span></p>
-                <p className="mt-2 flex justify-between border-t border-espresso/10 pt-2 text-base font-semibold"><span>Strafpunkte</span><span><Counter value={juryTotal + event.tip_count} animate={animate} /></span></p>
+                {guessBonus > 0 && <p className="mt-1 flex justify-between text-green-700"><span>Richtig geraten</span><span className="font-semibold">−{guessBonus}</span></p>}
+                <p className="mt-2 flex justify-between border-t border-espresso/10 pt-2 text-base font-semibold"><span>Strafpunkte</span><span>{juryTotal + event.tip_count - guessBonus < 0 && "−"}<Counter value={Math.abs(juryTotal + event.tip_count - guessBonus)} animate={animate} /></span></p>
                 <p className="mt-2 text-xs text-bark">Die Punkte wandern beim Abschluss auf euer Teamkonto und werden beim nächsten gemeinsamen Event in Handicaps eingelöst.</p>
             </motion.div>
         </>}
