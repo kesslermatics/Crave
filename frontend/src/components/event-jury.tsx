@@ -187,7 +187,7 @@ export function EventJury({ event, onChange }: { event: EventDetail; onChange: (
         {error && <p role="alert" className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
         {!allJudged && <p className="mt-1 text-sm text-bark">{judged.length} von {event.recipes.length} Gerichten bewertet. Jedes Gericht hat seine eigene Jury – die Abgabe findet ihr direkt unter dem Gericht.</p>}
         <div className="mt-6 rounded-3xl bg-cream/60 p-5 text-sm text-espresso">
-            {judged.map((recipe) => <p key={recipe.id} className="mt-1 flex justify-between gap-3 first:mt-0"><span className="min-w-0 truncate">{recipe.category} · {recipe.title}</span><span className="shrink-0 font-semibold">{recipe.jury.verdict?.penalty}</span></p>)}
+            {judged.map((recipe) => <p key={recipe.id} className="mt-1 flex justify-between gap-3 first:mt-0"><span className="min-w-0 break-words">{recipe.category} · {recipe.title}</span><span className="shrink-0 font-semibold">{recipe.jury.verdict?.penalty}</span></p>)}
             <p className={`flex justify-between ${judged.length ? "mt-1" : ""}`}><span>Tipps</span><span className="font-semibold">{event.tip_count}</span></p>
             {guessBonus > 0 && <p className="mt-1 flex justify-between text-green-700"><span>Richtig geraten</span><span className="font-semibold">−{guessBonus}</span></p>}
             <p className="mt-2 flex justify-between border-t border-espresso/10 pt-2 text-base font-semibold"><span>{allJudged ? "Strafpunkte" : "Strafpunkte bisher"}</span><span>{total < 0 && "−"}{Math.abs(total)}</span></p>

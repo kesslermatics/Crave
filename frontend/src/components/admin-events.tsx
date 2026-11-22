@@ -118,7 +118,7 @@ export function AdminEvents() {
     const toggle = (list: string[], value: string) => list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
     const input = "w-full rounded-2xl border border-espresso/10 bg-white px-4 py-3 text-base text-espresso outline-none sm:text-sm focus:border-caramel/50 focus:ring-4 focus:ring-caramel/10";
 
-    return <main className="mx-auto max-w-3xl px-5 pt-8 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-10">
+    return <main className="mx-auto w-full max-w-3xl px-5 pt-8 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-10">
         <p className="text-xs font-bold tracking-[0.2em] text-caramel uppercase">Admin</p>
         <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-espresso sm:text-4xl">Koch-Events</h1>
         {error && <p role="alert" className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}

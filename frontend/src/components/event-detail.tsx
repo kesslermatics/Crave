@@ -212,14 +212,14 @@ export function EventDetail({ eventId }: { eventId: string }) {
         } catch (caught) { setError((caught as Error).message); } finally { setOpening(null); }
     }
 
-    if (!event) return <main className="mx-auto max-w-3xl px-5 pt-10 sm:px-8">{error ? <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p> : <LoadingIndicator label="Event wird geladen…" />}</main>;
+    if (!event) return <main className="mx-auto w-full max-w-3xl px-5 pt-10 sm:px-8">{error ? <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p> : <LoadingIndicator label="Event wird geladen…" />}</main>;
 
     const myItems = event.drops.flatMap((drop) => drop.items ?? []);
     const embargo = event.effects.includes("bild_embargo") && event.phase !== "finished";
     const activeMedium = event.handicaps.filter((entry) => entry.tier !== "light");
     const daysLeft = Math.round((Date.parse(event.cook_date) - Date.parse(event.today)) / 86_400_000);
 
-    return <main className="mx-auto max-w-3xl px-5 pt-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-8">
+    return <main className="mx-auto w-full max-w-3xl px-5 pt-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-8">
         <Link href="/events" className="-ml-1 flex min-h-11 w-fit items-center gap-1 px-1 text-sm font-semibold text-caramel"><ArrowLeft size={15} aria-hidden="true" /> Alle Events</Link>
         <p className="mt-6 text-xs font-bold tracking-[0.2em] text-caramel uppercase">{event.categories.join(" · ")}</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-espresso sm:text-4xl">{event.title}</h1>

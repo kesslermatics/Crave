@@ -18,7 +18,7 @@ export function HandicapShop() {
     const [error, setError] = useState("");
     useEffect(() => { eventApi<{ tiers: Tier[] }>("/handicaps").then((result) => setTiers(result.tiers)).catch((caught: Error) => setError(caught.message)); }, []);
 
-    return <main className="mx-auto max-w-3xl px-5 pt-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-8">
+    return <main className="mx-auto w-full max-w-3xl px-5 pt-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-8">
         <Link href="/events" className="-ml-1 flex min-h-11 w-fit items-center gap-1 px-1 text-sm font-semibold text-caramel"><ArrowLeft size={15} aria-hidden="true" /> Events</Link>
         <h1 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-espresso sm:text-4xl">Handicap-Shop</h1>
         <p className="mt-2 text-sm leading-6 text-bark">Strafpunkte aus Tipps und Jury landen auf eurem Konto. Beim nächsten Event gibt Crave sie komplett aus: Leichte Handicaps verschleiern je eine Zutat (Vorschau: Tomate, 200 g), mittlere verändern das ganze Event.</p>
