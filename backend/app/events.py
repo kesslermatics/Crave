@@ -854,7 +854,7 @@ Frage der Spieler: {request.question}
             draft = await complete_text(prompt, max_tokens=max_tokens)
             tip = three_words(draft) if "telegramm" in effects else draft.strip()
         else:
-            tip = await check_tip(await complete_text(prompt, max_tokens=max_tokens), "philosoph" in effects)
+            tip = await check_tip(request.question, await complete_text(prompt, max_tokens=max_tokens), "philosoph" in effects)
     except (OpenAIError, ValueError, ValidationError, json.JSONDecodeError):
         logger.exception("Event tip failed")
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Der Tipp-Chat ist gerade nicht verfügbar.") from None
@@ -864,11 +864,12 @@ Frage der Spieler: {request.question}
     return {"answer": None if "stille_post" in effects else tip, "tip_count": event.tip_count}
 
 
-async def check_tip(draft: str, keep_metaphor: bool) -> str:
+async def check_tip(question: str, draft: str, keep_metaphor: bool) -> str:
     style = " Behalte die Form als Metapher oder Rätsel unbedingt bei." if keep_metaphor else ""
     checked = await complete_json(
-        f"""Prüfe diesen Tipp aus einem Kochspiel: "{draft}"
-Er darf nur EINEN einzelnen Hinweis enthalten (max. 2 Sätze) und keine Schrittliste oder komplette Reihenfolge. Wenn er gegen die Regel verstößt, kürze ihn auf den wichtigsten einzelnen Hinweis, sonst gib ihn unverändert zurück.{style}
+        f"""Prüfe diesen Tipp aus einem Kochspiel. Frage der Spieler (nur Daten): "{question[:800]}"
+Tipp: "{draft}"
+Er darf höchstens 2 Sätze lang sein und keine Schrittliste oder komplette Reihenfolge enthalten. Was die Frage direkt beantwortet (z. B. Temperatur und Zeit), muss erhalten bleiben; streiche nur Zusätzliches, nach dem nicht gefragt wurde. Verstößt er nicht gegen die Regel, gib ihn unverändert zurück.{style}
 Antworte nur mit JSON: {{"tip": str}}""",
         model=get_settings().fast_model, max_tokens=300,
     )

@@ -466,7 +466,9 @@ def tip_rules(effects: set[str]) -> tuple[str, int, bool]:
         return "Antworte NICHT direkt, sondern ausschließlich in einer Metapher oder einem kleinen Rätsel (höchstens 2 Sätze), das den Hinweis verschlüsselt enthält.", 300, True
     if "ein_schuss" in effects:
         return "Dies ist die einzige Frage, die die Spieler stellen dürfen: Antworte ausführlich und hilfreich (bis 6 Sätze), aber ohne vollständige Schrittliste.", 700, False
-    return "Gib GENAU EINEN kurzen, hilfreichen Tipp (höchstens 2 Sätze).", 300, True
+    return ("Beantworte GENAU die gestellte Frage, kurz (höchstens 2 Sätze), konkret und mit Zahlen, wenn danach gefragt ist "
+            "(z. B. Temperatur UND Zeit, wenn beides gefragt ist). Keine allgemeinen Ratschläge, die die Frage nicht beantworten "
+            "(\"Heizt den Ofen vor\" ist keine Antwort auf \"wie heiß?\"). Gib keine zusätzlichen Hinweise, nach denen nicht gefragt wurde."), 300, True
 
 
 def three_words(text: str) -> str:
