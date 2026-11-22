@@ -69,8 +69,8 @@ function DishReveal({ event, judged }: { event: EventDetail; judged: JudgedDish 
             <p className="text-xs font-bold tracking-[0.2em] text-caramel uppercase">Urteil der Jury</p>
             {verdictShown && <motion.span initial={animate ? { scale: 0 } : false} animate={{ scale: 1 }} className="shrink-0 rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-700">{judged.penalty} / 10 Strafpunkte</motion.span>}
         </div>
-        {visible >= 1 && <ul className="mt-4 grid grid-cols-2 gap-3">{photos.map((photo, index) => <motion.li key={photo.email} initial={animate ? { opacity: 0, rotate: index % 2 ? 6 : -6, scale: 0.8 } : false} animate={{ opacity: 1, rotate: 0, scale: 1 }} transition={{ delay: animate ? 0.2 + index * 0.15 : 0 }}>
-            {photo.image_data && <img src={photo.image_data} alt={`Ergebnis von ${photo.is_me ? "dir" : photo.email}`} className="aspect-square w-full rounded-2xl object-cover" />}
+        {visible >= 1 && <ul className="mt-4 space-y-4">{photos.map((photo, index) => <motion.li key={photo.email} className="min-w-0" initial={animate ? { opacity: 0, rotate: index % 2 ? 6 : -6, scale: 0.8 } : false} animate={{ opacity: 1, rotate: 0, scale: 1 }} transition={{ delay: animate ? 0.2 + index * 0.15 : 0 }}>
+            {photo.image_data && <img src={photo.image_data} alt={`Ergebnis von ${photo.is_me ? "dir" : photo.email}`} className="block aspect-square w-full max-w-full rounded-2xl object-cover sm:aspect-[4/3]" />}
             <p className="mt-1.5 truncate text-xs text-bark">{photo.is_me ? "Du" : photo.email} · {photo.taste_rating}/10</p>
         </motion.li>)}</ul>}
         <ul className="mt-5 divide-y divide-espresso/5">{judged.categories.map((category, index) => {
@@ -113,8 +113,8 @@ function SubmissionForm({ event, recipe, onDone }: { event: EventDetail; recipe:
     return <div className="mt-4">
         <p className="text-sm text-bark">Fertig gekocht? Jeder lädt ein Foto hoch und bewertet den Geschmack. Sobald alle dieses Gericht abgegeben haben, urteilt die Jury.</p>
         {/* Ohne capture-Attribut bieten Android und iOS Kamera, Galerie und Dateien zur Auswahl an. */}
-        <label className="mt-4 grid aspect-[4/3] w-full cursor-pointer place-items-center overflow-hidden rounded-2xl border-2 border-dashed border-espresso/15 bg-linen text-sm font-semibold text-bark focus-within:ring-4 focus-within:ring-caramel/20">
-            {image ? <img src={image} alt="Dein Ergebnis" className="h-full w-full object-cover" /> : <span className="flex flex-col items-center gap-2"><Camera size={26} className="text-caramel" aria-hidden="true" />Foto aufnehmen oder auswählen</span>}
+        <label className="mt-4 grid aspect-[4/3] w-full min-w-0 cursor-pointer place-items-center overflow-hidden rounded-2xl border-2 border-dashed border-espresso/15 bg-linen text-sm font-semibold text-bark focus-within:ring-4 focus-within:ring-caramel/20">
+            {image ? <img src={image} alt="Dein Ergebnis" className="h-full w-full min-w-0 object-cover" /> : <span className="flex flex-col items-center gap-2"><Camera size={26} className="text-caramel" aria-hidden="true" />Foto aufnehmen oder auswählen</span>}
             <input type="file" accept="image/*" onChange={pick} className="sr-only" aria-label={`Foto von ${recipe.title}`} />
         </label>
         <label className="mt-4 block text-sm font-semibold text-espresso">Wie hat es dir geschmeckt?
