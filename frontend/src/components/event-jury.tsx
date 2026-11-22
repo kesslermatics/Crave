@@ -113,8 +113,8 @@ function SubmissionForm({ event, recipe, onDone }: { event: EventDetail; recipe:
     return <div className="mt-4">
         <p className="text-sm text-bark">Fertig gekocht? Jeder lädt ein Foto hoch und bewertet den Geschmack. Sobald alle dieses Gericht abgegeben haben, urteilt die Jury.</p>
         {/* Ohne capture-Attribut bieten Android und iOS Kamera, Galerie und Dateien zur Auswahl an. */}
-        <label className="mt-4 grid aspect-[4/3] w-full min-w-0 cursor-pointer place-items-center overflow-hidden rounded-2xl border-2 border-dashed border-espresso/15 bg-linen text-sm font-semibold text-bark focus-within:ring-4 focus-within:ring-caramel/20">
-            {image ? <img src={image} alt="Dein Ergebnis" className="h-full w-full min-w-0 object-cover" /> : <span className="flex flex-col items-center gap-2"><Camera size={26} className="text-caramel" aria-hidden="true" />Foto aufnehmen oder auswählen</span>}
+        <label className="relative mt-4 flex aspect-[4/3] w-full cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-espresso/15 bg-linen text-sm font-semibold text-bark focus-within:ring-4 focus-within:ring-caramel/20">
+            {image ? <img src={image} alt="Dein Ergebnis" className="absolute inset-0 h-full w-full object-cover" /> : <span className="flex flex-col items-center gap-2"><Camera size={26} className="text-caramel" aria-hidden="true" />Foto aufnehmen oder auswählen</span>}
             <input type="file" accept="image/*" onChange={pick} className="sr-only" aria-label={`Foto von ${recipe.title}`} />
         </label>
         <label className="mt-4 block text-sm font-semibold text-espresso">Wie hat es dir geschmeckt?
