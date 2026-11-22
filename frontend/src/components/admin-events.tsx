@@ -66,6 +66,9 @@ export function AdminEvents() {
     const [penaltyBalance, setPenaltyBalance] = useState<number | null>(null);
     // Per team: loaded with the balance when the players are picked, saved again when the event starts.
     const [exclusions, setExclusions] = useState("");
+    // Optional, per dish category and only for this one event, e.g. {mittagessen: "bitte etwas Warmes"}.
+    const [wishes, setWishes] = useState<Record<string, string>>({});
+    const chosenWishes = Object.fromEntries(categories.filter((key) => wishes[key]?.trim()).map((key) => [key, wishes[key].trim()]));
 
     const loadEvents = useCallback(() => eventApi<AdminEvent[]>("/admin/events").then(setEvents).catch(() => undefined), []);
     useEffect(() => {
@@ -95,7 +98,7 @@ export function AdminEvents() {
         event.preventDefault();
         setBusy(true); setError("");
         try {
-            const result = await eventApi<{ ideas: string[] }>("/admin/events/ideas", { method: "POST", body: { theme, categories, exclusions } });
+            const result = await eventApi<{ ideas: string[] }>("/admin/events/ideas", { method: "POST", body: { theme, categories, exclusions, wishes: chosenWishes } });
             setIdeas(result.ideas); setStep("ideas");
         } catch (caught) { setError((caught as Error).message); } finally { setBusy(false); }
     }
@@ -103,8 +106,8 @@ export function AdminEvents() {
     async function startEvent() {
         setBusy(true); setError("");
         try {
-            await eventApi("/admin/events", { method: "POST", body: { title, theme, categories, start_date: startDate, cook_date: cookDate, participant_ids: selected, ideas, exclusions } });
-            setStep("users"); setSelected([]); setTitle(""); setTheme(""); setIdeas([]); setCookDate("");
+            await eventApi("/admin/events", { method: "POST", body: { title, theme, categories, start_date: startDate, cook_date: cookDate, participant_ids: selected, ideas, exclusions, wishes: chosenWishes } });
+            setStep("users"); setSelected([]); setTitle(""); setTheme(""); setWishes({}); setIdeas([]); setCookDate("");
             await loadEvents();
         } catch (caught) { setError((caught as Error).message); } finally { setBusy(false); }
     }
@@ -151,6 +154,13 @@ export function AdminEvents() {
                     return <button key={category.key} type="button" aria-pressed={active} disabled={!active && categories.length >= 4} onClick={() => setCategories(toggle(categories, category.key))} className={`min-h-11 rounded-full border px-4 py-2 text-sm font-semibold transition ${active ? "border-caramel bg-saffron/30 text-espresso" : "border-espresso/10 bg-white text-bark"} disabled:opacity-40`}>{category.label}</button>;
                 })}</div>
             </fieldset>
+            {categories.length > 0 && <fieldset className="space-y-3">
+                <legend className="text-sm font-semibold text-espresso">Wünsche je Gericht <span className="font-normal text-bark">(optional)</span></legend>
+                {EVENT_CATEGORIES.filter((category) => categories.includes(category.key)).map((category) => <label key={category.key} className="block text-sm font-semibold text-espresso">{category.label}
+                    <textarea maxLength={600} rows={2} value={wishes[category.key] ?? ""} onChange={(e) => setWishes({ ...wishes, [category.key]: e.target.value })} placeholder={category.key === "dessert" ? "z. B. ohne Backofen, gerne mit Schokolade" : "z. B. bitte etwas Warmes, höchstens 1 Stunde"} className={`${input} mt-1.5`} />
+                </label>)}
+                <p className="text-xs text-bark">Verbindlich für Ideen und Rezept dieses Gerichts – gilt nur für dieses Event.</p>
+            </fieldset>}
             <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-semibold text-espresso">Start (erste Zutat)<input type="date" required min={todayIso()} value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`${input} mt-1.5`} /></label>
                 <label className="block text-sm font-semibold text-espresso">Kochtag (Reveal)<input type="date" required min={startDate} value={cookDate} onChange={(e) => setCookDate(e.target.value)} className={`${input} mt-1.5`} /></label>

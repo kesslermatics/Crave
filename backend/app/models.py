@@ -131,6 +131,8 @@ class Event(Base):
     creator_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     theme: Mapped[str] = mapped_column(Text, nullable=False)
+    # Optional binding wishes per dish category for this one event, e.g. {"mittagessen": "bitte etwas Warmes"}.
+    dish_wishes: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
     categories: Mapped[list[str]] = mapped_column(JSONB, nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     cook_date: Mapped[date] = mapped_column(Date, nullable=False)
