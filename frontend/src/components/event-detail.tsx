@@ -15,6 +15,7 @@ import { LoadingIndicator } from "@/components/loading-indicator";
 import { Toast, toastActionClass, useToast } from "@/components/toast";
 import { addShoppingItems } from "@/lib/shopping-list";
 import { CopyIngredients } from "@/components/copy-ingredients";
+import { EventDebrief } from "@/components/event-debrief";
 
 type Revealed = { day_index: number; items: DropItem[]; teaser: string | null };
 
@@ -310,6 +311,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
                     <p className="text-sm">Blindverkostung: Erst wenn ihr fertig gekocht habt, wird aufgedeckt, was es sein sollte. Danach geht es zur Jury.</p>
                     <button type="button" disabled={gameBusy} onClick={() => { if (window.confirm("Fertig gekocht? Dann jetzt aufdecken.")) void gameAction("blind-reveal"); }} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-bold text-espresso disabled:opacity-60 sm:w-auto">Gericht aufdecken</button>
                 </section> : <EventJury event={event} onChange={load} />}
+                {(event.phase === "judged" || event.phase === "finished") && <EventDebrief eventId={event.id} />}
             </>}
         </section>}
 
