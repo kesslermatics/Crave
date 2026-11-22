@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowUp, ChevronDown, Gift, Lightbulb, Lock, Sparkles, Trash2, X } from "lucide-react";
 import { DropItem, EventDetail as EventData, EventIngredient, eventApi, formatAmount, formatDay } from "@/lib/events";
 import { EventGuess } from "@/components/event-guess";
-import { EventJury } from "@/components/event-jury";
+import { DishJuryPanel, EventJury } from "@/components/event-jury";
 import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
 import { HandicapIcon } from "@/components/handicap-icons";
 import { FormattedMessage } from "@/components/formatted-message";
@@ -260,6 +260,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
                         {recipe.instructions.length > 0
                             ? <details className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso"><summary className="min-h-8 cursor-pointer font-semibold">Originalzubereitung</summary><ol className="mt-2 list-decimal space-y-2 pl-5 leading-6">{recipe.instructions.map((step) => <li key={step}>{step}</li>)}</ol></details>
                             : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
+                        {event.game.blind_revealed && <DishJuryPanel event={event} recipe={recipe} onChange={load} />}
                     </div>
                 </motion.article>)}
                 {event.handicaps.some((entry) => entry.tier === "light" && entry.ingredient) && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="handicaps-title">

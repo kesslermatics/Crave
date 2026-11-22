@@ -3,11 +3,11 @@ import { apiUrl } from "@/lib/api";
 export type DropItem = { name: string; amount: number | null; unit: string; image_data: string | null; handicap: { id: string; title: string } | null };
 export type Drop = { day_index: number; date: string; state: "locked" | "available" | "revealed"; items?: DropItem[]; teaser?: string | null };
 export type EventIngredient = { name: string; amount: number | null; unit: string; mask?: "amount" | "name" | "memory"; image_data?: string | null };
-export type EventRecipe = { id: string; instructions: string[]; category: string; title: string; description: string; image_data: string | null; servings: number; total_time_minutes: number; difficulty: string; ingredients: EventIngredient[] };
-export type JuryVerdict = {
-    recipes: { recipe_id: string; title: string; verdict: string; penalty: number; categories: { name: string; penalty: number; comment: string }[] }[];
-    summary: string; penalty: number; reveal_at?: string;
-};
+export type JudgedDish = { recipe_id: string; title: string; verdict: string; penalty: number; categories: { name: string; penalty: number; comment: string }[]; reveal_at?: string };
+/** Every dish has its own jury: hand in, get judged, get its own penalty points. */
+export type DishJury = { phase: "cooking" | "judging" | "judged"; error: string | null; verdict: JudgedDish | null };
+export type EventRecipe = { id: string; instructions: string[]; category: string; title: string; description: string; image_data: string | null; servings: number; total_time_minutes: number; difficulty: string; ingredients: EventIngredient[]; jury: DishJury };
+export type JuryVerdict = { recipes: JudgedDish[]; summary: string; penalty: number; reveal_at?: string };
 export type EventSubmission = { email: string; is_me: boolean; recipe_id: string; taste_rating: number | null; image_data: string | null };
 export type EventGuessing = {
     open: boolean; done: boolean; judging: boolean; judging_since: string | null; error: string | null; reveal_at: string | null;

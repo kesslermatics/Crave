@@ -59,6 +59,15 @@ async def initialize_database() -> None:
         ):
             await connection.execute(text(f"ALTER TABLE events ADD COLUMN IF NOT EXISTS {column}"))
         await connection.execute(text("ALTER TABLE event_tips ADD COLUMN IF NOT EXISTS meta JSONB"))
+        # Per-dish jury (the jury used to judge all dishes of an event at once).
+        for column in ("jury_phase VARCHAR(16) NOT NULL DEFAULT 'cooking'", "verdict JSONB", "jury_error TEXT"):
+            await connection.execute(text(f"ALTER TABLE event_recipes ADD COLUMN IF NOT EXISTS {column}"))
+        # Events judged the old way: copy each dish's part of the event verdict onto the dish.
+        await connection.execute(text(
+            "UPDATE event_recipes r SET jury_phase = 'judged', verdict = v.elem || jsonb_build_object('reveal_at', e.verdict->'reveal_at')"
+            " FROM events e, jsonb_array_elements(e.verdict->'recipes') AS v(elem)"
+            " WHERE r.event_id = e.id AND e.verdict IS NOT NULL AND r.verdict IS NULL AND v.elem->>'recipe_id' = r.id::text"
+        ))
         await connection.execute(text("ALTER TABLE events ADD COLUMN IF NOT EXISTS team_key TEXT"))
         await connection.execute(text("CREATE INDEX IF NOT EXISTS ix_events_team_key ON events (team_key)"))
         # Events from before team accounts: derive the team from the participants.

@@ -169,6 +169,10 @@ class EventRecipe(Base):
     # Full RecipeCreate JSON (without image). Instructions are stored but never sent to players.
     recipe: Mapped[dict[str, object]] = mapped_column(JSONB, nullable=False)
     image_data: Mapped[str | None] = mapped_column(Text)
+    # Every dish has its own jury: cooking -> judging -> judged, with its own verdict and penalty points.
+    jury_phase: Mapped[str] = mapped_column(String(16), nullable=False, default="cooking", server_default="cooking")
+    verdict: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    jury_error: Mapped[str | None] = mapped_column(Text)
 
 
 class EventDrop(Base):
