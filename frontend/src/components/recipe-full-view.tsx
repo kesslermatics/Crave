@@ -12,7 +12,9 @@ import { RecipeChat } from "@/components/recipe-chat";
 import { Toast, toastActionClass, useToast } from "@/components/toast";
 import { formatQuantity } from "@/lib/amount";
 import { apiUrl } from "@/lib/api";
-import { addShoppingItems, guessSection, parseShoppingInput, shareText, shoppingListText, syncShoppingList, type ShoppingDraft } from "@/lib/shopping-list";
+import { addShoppingItems, parseShoppingInput, shareText, syncShoppingList, type ShoppingDraft } from "@/lib/shopping-list";
+import { recipeShareText } from "@/lib/recipe-text";
+import { CopyIngredients } from "@/components/copy-ingredients";
 import { formatDuration } from "@/lib/duration";
 import { recipeListHref } from "@/lib/recipe-filter";
 
@@ -256,13 +258,13 @@ function FullView({ recipe, proposal, children }: { recipe: Recipe; proposal: bo
         showToast(`${count} ${count === 1 ? "Zutat" : "Zutaten"} auf der Liste${merged ? ` · ${merged} zusammengefasst` : ""}${offline ? " (ohne KI sortiert)" : ""}`, <Link href="/einkaufsliste" className={toastActionClass}>Ansehen</Link>);
     }
 
-    async function exportIngredients() {
-        const items = scaledIngredients.map((item) => ({ name: item.name, amount: item.amount > 0 ? item.amount : null, unit: item.unit, section: guessSection(item.name) }));
+    /** Whole recipe (title, description, ingredients for the chosen portions, steps) – share sheet on phones, clipboard elsewhere. */
+    async function shareRecipe() {
         try {
-            const result = await shareText(shoppingListText(items, `Einkaufsliste: ${recipe.title} (${servings} ${servings === 1 ? "Portion" : "Portionen"})`), recipe.title);
-            if (result === "copied") showToast("Zutatenliste in die Zwischenablage kopiert");
+            const result = await shareText(recipeShareText(recipe, servings), recipe.title);
+            if (result === "copied") showToast("Rezept in die Zwischenablage kopiert");
         } catch {
-            showToast("Exportieren hat nicht geklappt");
+            showToast("Teilen hat nicht geklappt");
         }
     }
 
@@ -270,9 +272,10 @@ function FullView({ recipe, proposal, children }: { recipe: Recipe; proposal: bo
         <button type="button" onClick={addToShoppingList} disabled={isAddingToList} className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full bg-espresso px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-caramel focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40 disabled:opacity-80">
             {isAddingToList ? <LoadingIndicator label="Wird hinzugefügt…" light /> : <><ShoppingBasket size={16} strokeWidth={2.25} aria-hidden="true" />Zur Einkaufsliste</>}
         </button>
-        <button type="button" onClick={exportIngredients} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-bark ring-1 ring-espresso/10 transition hover:bg-white hover:text-espresso focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40" aria-label="Zutatenliste exportieren oder teilen">
-            <Share2 size={16} strokeWidth={2.25} aria-hidden="true" />Exportieren
+        <button type="button" onClick={shareRecipe} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-bark ring-1 ring-espresso/10 transition hover:bg-white hover:text-espresso focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/40" aria-label="Ganzes Rezept teilen oder kopieren">
+            <Share2 size={16} strokeWidth={2.25} aria-hidden="true" />Rezept teilen
         </button>
+        <CopyIngredients key={servings} ingredients={recipe.ingredients} baseServings={originalServings} initialServings={servings} />
     </div>;
 
     return <main className="flex-1 bg-linen pb-32">

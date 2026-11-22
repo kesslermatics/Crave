@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowUp, ChevronDown, Gift, Lightbulb, Lock, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowUp, BookmarkPlus, Check, ChevronDown, Gift, Lightbulb, Lock, ShoppingBasket, Sparkles, Trash2, X } from "lucide-react";
 import { DropItem, EventDetail as EventData, EventIngredient, eventApi, formatAmount, formatDay } from "@/lib/events";
 import { EventGuess } from "@/components/event-guess";
 import { DishJuryPanel, EventJury } from "@/components/event-jury";
@@ -12,6 +12,9 @@ import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
 import { HandicapIcon } from "@/components/handicap-icons";
 import { FormattedMessage } from "@/components/formatted-message";
 import { LoadingIndicator } from "@/components/loading-indicator";
+import { Toast, toastActionClass, useToast } from "@/components/toast";
+import { addShoppingItems } from "@/lib/shopping-list";
+import { CopyIngredients } from "@/components/copy-ingredients";
 
 type Revealed = { day_index: number; items: DropItem[]; teaser: string | null };
 
@@ -160,6 +163,25 @@ function TipChat({ eventId, tips, tipCount, onTip, readOnly = false, effects = [
     </section>;
 }
 
+/** After the event: copy a dish into the player's own recipes (with steps), then link to it. */
+function SaveRecipeButton({ eventId, recipeId }: { eventId: string; recipeId: string }) {
+    const [state, setState] = useState<{ busy: boolean; id: string | null; already: boolean; error: string }>({ busy: false, id: null, already: false, error: "" });
+    async function save() {
+        setState({ ...state, busy: true, error: "" });
+        try {
+            const result = await eventApi<{ id: string; already_saved: boolean }>(`/events/${eventId}/recipes/${recipeId}/save`, { method: "POST" });
+            setState({ busy: false, id: result.id, already: result.already_saved, error: "" });
+        } catch (caught) { setState({ ...state, busy: false, error: (caught as Error).message }); }
+    }
+    if (state.id) return <p className="mt-5 flex flex-wrap items-center gap-2 text-sm font-semibold text-espresso"><Check size={16} className="text-caramel" aria-hidden="true" />{state.already ? "Schon in deinen Rezepten" : "In deinen Rezepten gespeichert"}<Link href={`/recipes/${state.id}`} className="text-caramel underline">Ansehen</Link></p>;
+    return <div className="mt-5">
+        <button type="button" onClick={save} disabled={state.busy} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full bg-espresso px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-caramel disabled:opacity-70">
+            {state.busy ? <LoadingIndicator light label="Wird gespeichert…" /> : <><BookmarkPlus size={16} aria-hidden="true" />Als Rezept speichern</>}
+        </button>
+        {state.error && <p role="alert" className="mt-2 text-sm text-red-700">{state.error}</p>}
+    </div>;
+}
+
 export function EventDetail({ eventId }: { eventId: string }) {
     const [event, setEvent] = useState<EventData | null>(null);
     const [error, setError] = useState("");
@@ -167,6 +189,9 @@ export function EventDetail({ eventId }: { eventId: string }) {
     const [revealed, setRevealed] = useState<Revealed | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [gameBusy, setGameBusy] = useState(false);
+    // Indices of "my" ingredients already put on the shopping list in this visit (for the check mark).
+    const [carted, setCarted] = useState<Set<number>>(new Set());
+    const { toast, show: showToast } = useToast();
 
     async function gameAction(action: "memory-start" | "blind-reveal") {
         setGameBusy(true); setError("");
@@ -215,6 +240,15 @@ export function EventDetail({ eventId }: { eventId: string }) {
     if (!event) return <main className="mx-auto w-full max-w-3xl px-5 pt-10 sm:px-8">{error ? <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p> : <LoadingIndicator label="Event wird geladen…" />}</main>;
 
     const myItems = event.drops.flatMap((drop) => drop.items ?? []);
+
+    function addToCart(indices: number[]) {
+        const items = indices.map((index) => myItems[index]).filter(Boolean);
+        if (!items.length) return;
+        const { added, merged } = addShoppingItems(items.map((item) => ({ name: item.name, amount: item.amount, unit: item.unit })), `Event: ${event!.title}`);
+        setCarted((current) => new Set([...current, ...indices]));
+        const count = added + merged;
+        showToast(`${count} ${count === 1 ? "Zutat" : "Zutaten"} auf der Einkaufsliste${merged ? ` · ${merged} zusammengefasst` : ""}`, <Link href="/einkaufsliste" className={toastActionClass}>Ansehen</Link>);
+    }
     const embargo = event.effects.includes("bild_embargo") && event.phase !== "finished";
     const activeMedium = event.handicaps.filter((entry) => entry.tier !== "light");
     const daysLeft = Math.round((Date.parse(event.cook_date) - Date.parse(event.today)) / 86_400_000);
@@ -257,9 +291,13 @@ export function EventDetail({ eventId }: { eventId: string }) {
                         <p className="mt-3 text-sm leading-6 text-bark">{recipe.description}</p>
                         <p className="mt-3 text-xs font-semibold text-bark">{recipe.servings} Portionen · ca. {recipe.total_time_minutes} Min.</p>
                         {recipe.ingredients.length > 0 && <CookIngredients items={recipe.ingredients} />}
+                        {/* Not while "Memory" runs: copying the list would undo the handicap. */}
+                        {recipe.ingredients.some((item) => item.name && item.mask !== "memory") && !(event.effects.includes("memory") && event.phase !== "finished") && <CopyIngredients className="mt-5"
+                            ingredients={recipe.ingredients.filter((item) => item.name && item.mask !== "memory").map((item) => ({ name: item.name, amount: item.amount, unit: item.unit }))} baseServings={recipe.servings} />}
                         {recipe.instructions.length > 0
                             ? <details className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso"><summary className="min-h-8 cursor-pointer font-semibold">Originalzubereitung</summary><ol className="mt-2 list-decimal space-y-2 pl-5 leading-6">{recipe.instructions.map((step) => <li key={step}>{step}</li>)}</ol></details>
                             : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
+                        {event.phase === "finished" && <SaveRecipeButton eventId={event.id} recipeId={recipe.id} />}
                         {event.game.blind_revealed && <DishJuryPanel event={event} recipe={recipe} onChange={load} />}
                     </div>
                 </motion.article>)}
@@ -306,12 +344,20 @@ export function EventDetail({ eventId }: { eventId: string }) {
             </section>}
 
             <section className="mt-10" aria-labelledby="mine-title">
-                <h2 id="mine-title" className="text-xl font-semibold text-espresso">{event.is_cook_day ? "Was du mitbringen solltest" : "Deine Einkaufsliste"}</h2>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h2 id="mine-title" className="text-xl font-semibold text-espresso">{event.is_cook_day ? "Was du mitbringen solltest" : "Deine Einkaufsliste"}</h2>
+                    {myItems.length > 0 && <button type="button" onClick={() => addToCart(myItems.map((_, index) => index))} className="flex min-h-11 items-center gap-2 rounded-full bg-espresso px-4 text-sm font-semibold text-white transition hover:bg-caramel">
+                        <ShoppingBasket size={16} aria-hidden="true" /> Alle zur Einkaufsliste
+                    </button>}
+                </div>
                 {myItems.length === 0 ? <p className="mt-3 text-sm text-bark">Noch nichts aufgedeckt.</p>
                     : <ul className="mt-4 space-y-2">{myItems.map((item, index) => <li key={index} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
                         <IngredientPicture item={item} size="h-12 w-12" />
                         <span className="min-w-0 flex-1 text-sm font-semibold break-words text-espresso"><HandicapName item={item} />{item.handicap && <span className="block text-[11px] font-bold text-red-700">{item.handicap.title}</span>}</span>
                         <span className="shrink-0 text-sm font-semibold text-caramel">{formatAmount(item.amount, item.unit)}</span>
+                        <button type="button" onClick={() => addToCart([index])} aria-label={`${item.name} zur Einkaufsliste`} className={`grid h-11 w-11 shrink-0 place-items-center rounded-full transition ${carted.has(index) ? "bg-saffron/30 text-espresso" : "text-bark hover:bg-linen hover:text-espresso"}`}>
+                            {carted.has(index) ? <Check size={17} aria-hidden="true" /> : <ShoppingBasket size={17} aria-hidden="true" />}
+                        </button>
                     </li>)}</ul>}
                 {event.drops.filter((drop) => drop.state === "revealed" && drop.teaser).length > 0 && <ul className="mt-4 space-y-2">{event.drops.filter((drop) => drop.state === "revealed" && drop.teaser).map((drop) => <li key={drop.day_index} className="flex gap-2 text-sm text-bark"><Sparkles size={14} className="mt-1 shrink-0 text-caramel" aria-hidden="true" />{drop.teaser}</li>)}</ul>}
             </section>
@@ -333,5 +379,6 @@ export function EventDetail({ eventId }: { eventId: string }) {
         </button>}
 
         <AnimatePresence>{revealed && <RevealModal drop={revealed} onClose={() => setRevealed(null)} />}</AnimatePresence>
+        <Toast toast={toast} />
     </main>;
 }

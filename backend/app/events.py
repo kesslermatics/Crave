@@ -35,6 +35,9 @@ from app.db import get_session, get_session_factory
 from app.handicaps import CATALOG, GOOD_COP_RULE, TwoTips, black_hole_pick, build_display, choose_handicaps, cook_view, disguise, plan_event_handicaps, public_item, three_words, tip_rules
 from app.models import Event, EventDrop, EventGuess, EventRecipe, EventSubmission, EventTip, IngredientImage, TeamSetting, User
 from app.thumbnails import make_thumbnail
+from app.models import Recipe
+from app.recipe_schemas import RecipeCreate
+from app.recipes import create_recipe
 
 logger = logging.getLogger(__name__)
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
@@ -964,6 +967,26 @@ async def restart_jury(event_id: UUID, recipe_id: UUID, background: BackgroundTa
     await session.commit()
     background.add_task(run_jury, event.id, recipe.id)
     return {"jury_started": True}
+
+
+@router.post("/{event_id}/recipes/{recipe_id}/save")
+async def save_event_recipe(event_id: UUID, recipe_id: UUID, session: AsyncSession = Depends(get_session), user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """Copies a dish into the player's own recipes – only after the event, when nothing is secret any more."""
+    event = await load_event_for(session, event_id, user)
+    if event.phase != "finished":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Speichern geht erst, wenn das Event abgeschlossen ist.")
+    row = await session.get(EventRecipe, recipe_id)
+    if row is None or row.event_id != event.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Gericht nicht gefunden")
+    existing = await session.scalar(select(Recipe.id).where(Recipe.owner_id == user.id, Recipe.title == row.title).limit(1))
+    if existing:
+        return {"id": str(existing), "already_saved": True}
+    data = {key: value for key, value in row.recipe.items() if key in RecipeCreate.model_fields}
+    # "Paralleles Universum" painted a deliberately misleading photo, so that one is not kept.
+    image = None if "paralleles_universum" in event_effects(event) else row.image_data
+    payload = RecipeCreate.model_validate({**data, "image_data": image, "tags": [*data.get("tags", []), "Koch-Event"][:30]})
+    saved = await create_recipe(payload, session, user)
+    return {"id": str(saved.id), "already_saved": False}
 
 
 @router.post("/{event_id}/finish")
