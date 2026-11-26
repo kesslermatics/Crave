@@ -2,10 +2,10 @@
 /* eslint-disable @next/next/no-img-element -- images are generated data URLs */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowUp, BookmarkPlus, Check, ChevronDown, Gift, Lightbulb, Lock, ShoppingBasket, Sparkles, Trash2, X } from "lucide-react";
-import { DropItem, EventDetail as EventData, EventIngredient, eventApi, formatAmount, formatDay } from "@/lib/events";
+import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
+import { AnimatePresence, MotionConfig, motion } from "framer-motion";
+import { ArrowUp, BookmarkPlus, Check, ChevronDown, ChevronLeft, Gift, Lightbulb, ShoppingBasket, Sparkles, Trash2, X } from "lucide-react";
+import { Drop, DropItem, EventDetail as EventData, EventIngredient, eventApi, formatAmount, formatDay } from "@/lib/events";
 import { EventGuess } from "@/components/event-guess";
 import { DishJuryPanel, EventJury } from "@/components/event-jury";
 import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
@@ -16,32 +16,53 @@ import { Toast, toastActionClass, useToast } from "@/components/toast";
 import { addShoppingItems } from "@/lib/shopping-list";
 import { CopyIngredients } from "@/components/copy-ingredients";
 import { EventDebrief } from "@/components/event-debrief";
+import { DayTrack, GiftBox, Stage, StageLabel, day, ease, plural, stageOf } from "@/components/event-stage";
 
 type Revealed = { day_index: number; items: DropItem[]; teaser: string | null };
 
 const IngredientPicture = HandicapPicture;
 
-/** All active handicaps at the top of the event: horizontally scrollable chips that link into the shop. */
+const grow = { initial: { height: 0, opacity: 0 }, animate: { height: "auto", opacity: 1 }, exit: { height: 0, opacity: 0 }, transition: { duration: 0.3, ease } };
+const weekday = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("de-DE", { weekday: "short" }).replace(".", "");
+const dayOfMonth = (iso: string) => Number(iso.slice(8, 10));
+
+/** Kleine Abschnitts-Überschrift im Stil der Einkaufsliste, rechts optional Info oder Aktion. */
+function SectionHeading({ id, children, aside }: { id: string; children: ReactNode; aside?: ReactNode }) {
+    return <div className="flex min-h-8 items-center justify-between gap-3 px-1">
+        <h2 id={id} className="text-[11px] font-semibold tracking-[0.14em] text-bark/75 uppercase">{children}</h2>
+        {aside}
+    </div>;
+}
+
+/** Alle aktiven Handicaps: eingeklappt nur Icons und Summe, aufgeklappt die Details mit Link in den Shop. */
 function HandicapBar({ handicaps, spent }: { handicaps: EventData["handicaps"]; spent: number }) {
+    const [open, setOpen] = useState(false);
     // Several light handicaps of the same kind show up once with a counter.
     const grouped = [...handicaps.reduce((map, entry) => map.set(entry.handicap, { ...entry, count: (map.get(entry.handicap)?.count ?? 0) + 1 }), new Map<string, EventData["handicaps"][number] & { count: number }>()).values()];
     const order = { heavy: 0, medium: 1, light: 2 } as Record<string, number>;
     grouped.sort((a, b) => order[a.tier] - order[b.tier]);
-    return <details className="group mt-4 rounded-3xl border border-red-100 bg-white shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
-        <summary className="flex min-h-12 cursor-pointer list-none items-center gap-3 px-4 py-2 [&::-webkit-details-marker]:hidden">
-            <span className="flex -space-x-2" aria-hidden="true">{grouped.slice(0, 4).map((entry) => <HandicapIcon key={entry.handicap} id={entry.handicap} tier={entry.tier} title={entry.title} size={12} className="h-7 w-7 rounded-full ring-2 ring-white" />)}</span>
-            <span className="min-w-0 flex-1 text-xs font-bold tracking-[0.16em] text-red-700 uppercase">Aktive Handicaps · {spent} Strafpunkte</span>
-            <ChevronDown size={18} className="shrink-0 text-red-700 transition group-open:rotate-180" aria-hidden="true" />
-        </summary>
-        <ul className="divide-y divide-espresso/5 px-4 pb-2">{grouped.map((entry) => <li key={entry.handicap} className="flex gap-3 py-3">
-            <HandicapIcon id={entry.handicap} tier={entry.tier} title={entry.title} size={16} className="h-11 w-11" />
-            <div className="min-w-0">
-                <p className="text-sm font-semibold text-espresso">{entry.title}{entry.count > 1 && <span className="ml-1 text-caramel">×{entry.count}</span>}</p>
-                {entry.description && <p className="mt-0.5 text-sm leading-6 text-bark">{entry.description}</p>}
-                <Link href={`/handicaps#${entry.handicap}`} className="mt-1 inline-flex min-h-8 items-center text-xs font-semibold text-caramel">Im Shop ansehen</Link>
-            </div>
-        </li>)}</ul>
-    </details>;
+    return <div className="mt-6 overflow-hidden rounded-2xl bg-white ring-1 ring-red-200/70">
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="handicap-list" className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors active:bg-red-50/60">
+            <span className="flex shrink-0 -space-x-2" aria-hidden="true">{grouped.slice(0, 4).map((entry) => <HandicapIcon key={entry.handicap} id={entry.handicap} tier={entry.tier} title={entry.title} size={12} className="h-8 w-8 rounded-full ring-2 ring-white" />)}</span>
+            <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-espresso">{plural(handicaps.length, "Handicap", "Handicaps")} aktiv</span>
+                <span className="block text-xs text-red-700">{plural(spent, "Strafpunkt", "Strafpunkte")} eingelöst</span>
+            </span>
+            <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.25, ease }} className="grid shrink-0 text-bark/60" aria-hidden="true"><ChevronDown size={18} /></motion.span>
+        </button>
+        <AnimatePresence initial={false}>
+            {open && <motion.div id="handicap-list" {...grow} className="overflow-hidden">
+                <ul className="px-4 pb-2">{grouped.map((entry) => <li key={entry.handicap} className="flex gap-3 border-t border-espresso/[0.06] py-3">
+                    <HandicapIcon id={entry.handicap} tier={entry.tier} title={entry.title} size={16} className="h-11 w-11" />
+                    <div className="min-w-0">
+                        <p className="text-sm font-semibold text-espresso">{entry.title}{entry.count > 1 && <span className="ml-1 text-caramel">×{entry.count}</span>}</p>
+                        {entry.description && <p className="mt-0.5 text-sm leading-6 text-bark">{entry.description}</p>}
+                        <Link href={`/handicaps#${entry.handicap}`} className="mt-1 inline-flex min-h-8 items-center text-xs font-semibold text-caramel">Im Shop ansehen</Link>
+                    </div>
+                </li>)}</ul>
+            </motion.div>}
+        </AnimatePresence>
+    </div>;
 }
 
 /** Cook-day ingredient rows, honouring the "geteiltes Bewusstsein" and memory masks. */
@@ -72,10 +93,11 @@ function HandicapBadge({ item }: { item: DropItem }) {
     return item.handicap ? <span className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-red-50 py-0.5 pr-2.5 pl-0.5 text-[11px] font-bold text-red-700"><HandicapIcon id={item.handicap.id} title={item.handicap.title} tier={item.handicap.id === "schwarzes_loch" ? "medium" : "light"} size={11} className="h-5 w-5 rounded-full" />{item.handicap.title}</span> : null;
 }
 
-function RevealModal({ drop, onClose }: { drop: Revealed; onClose: () => void }) {
+function RevealModal({ drop, onClose, startAtSummary = false }: { drop: Revealed; onClose: () => void; startAtSummary?: boolean }) {
     // Several ingredients are unwrapped one after another; the last step shows the whole package.
-    const [step, setStep] = useState(0);
     const count = drop.items.length;
+    // Schon ausgepackt und nochmal angetippt: direkt die Übersicht zeigen, nicht alles neu auspacken.
+    const [step, setStep] = useState(startAtSummary && count > 1 ? count : 0);
     const isSummary = count > 1 && step >= count;
     const next = useCallback(() => (count > 1 && step < count ? setStep(step + 1) : onClose()), [count, step, onClose]);
     useEffect(() => {
@@ -96,7 +118,7 @@ function RevealModal({ drop, onClose }: { drop: Revealed; onClose: () => void })
             <button type="button" onClick={onClose} aria-label="Schließen" className="absolute top-3 right-3 z-10 grid h-11 w-11 place-items-center rounded-full text-bark hover:bg-espresso/5"><X size={18} /></button>
             <div className="relative">
                 <p className="text-xs font-bold tracking-[0.2em] text-caramel uppercase">Tag {drop.day_index + 1}{count > 1 && !isSummary && ` · ${step + 1} von ${count}`}</p>
-                <h2 id="reveal-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso">{count === 0 ? "Hinweis des Tages" : isSummary ? "Dein Paket" : "Deine Zutat"}</h2>
+                <h2 id="reveal-title" className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso">{count === 0 ? "Hinweis des Tages" : isSummary ? "Dein Päckchen" : "Deine Zutat"}</h2>
                 {count === 0 && <motion.p initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="mt-6 flex items-start gap-3 rounded-2xl bg-white p-4 text-left text-sm leading-6 text-espresso"><Sparkles size={18} className="mt-0.5 shrink-0 text-caramel" aria-hidden="true" />{drop.teaser}</motion.p>}
                 {count > 0 && !isSummary && <div className="mt-6 grid min-h-64 place-items-center overflow-hidden" aria-live="polite">
                     <AnimatePresence mode="wait">
@@ -183,16 +205,185 @@ function SaveRecipeButton({ eventId, recipeId }: { eventId: string; recipeId: st
     </div>;
 }
 
+function headline(event: EventData, stage: Stage) {
+    switch (stage.kind) {
+        case "upcoming": return `Erstes Päckchen ${day(event.start_date)} · Kochtag ${day(event.cook_date)}`;
+        case "running": return stage.daysLeft === 1 ? `Morgen ist Kochtag · ${day(event.cook_date)}` : `Kochtag ${day(event.cook_date)} · noch ${stage.daysLeft} Tage`;
+        case "finished": return `Gekocht am ${day(event.cook_date, { day: "numeric", month: "long", year: "numeric" })}`;
+        default: return `Kochtag ${day(event.cook_date, { weekday: "long", day: "numeric", month: "long" })}`;
+    }
+}
+
+/** Seitenrahmen: Hintergrund, Breite, Zurück-Link. */
+function Frame({ children }: { children: ReactNode }) {
+    return <MotionConfig reducedMotion="user">
+        <main className="flex-1 bg-linen">
+            <div className="mx-auto w-full max-w-2xl px-5 pt-3 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-8">
+                <Link href="/events" className="-ml-2 flex h-10 w-fit items-center gap-0.5 rounded-full pr-3 pl-1 text-sm font-semibold text-caramel transition active:bg-caramel/10"><ChevronLeft size={20} strokeWidth={2.25} aria-hidden="true" />Events</Link>
+                {children}
+            </div>
+        </main>
+    </MotionConfig>;
+}
+
+/** Die wichtigste Aktion der Päckchen-Phase, groß und daumenfreundlich. */
+function TodayCard({ drops, today, imagesPending, opening, onOpen }: { drops: Drop[]; today: string; imagesPending: boolean; opening: boolean; onOpen: (dayIndex: number) => void }) {
+    const first = drops[0];
+    const disabled = imagesPending || opening;
+    const eyebrow = imagesPending ? "Gleich bereit" : drops.length > 1 ? `${drops.length} Päckchen offen` : first.date === today ? "Heute" : day(first.date);
+    const title = imagesPending ? "Die Bilder werden noch gemalt…" : drops.length > 1 ? "Deine Päckchen warten" : "Dein Päckchen wartet";
+    return <motion.button type="button" onClick={() => onOpen(first.day_index)} disabled={disabled}
+        initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease, delay: 0.08 }}
+        className="mt-6 flex w-full items-center gap-4 rounded-[1.75rem] bg-white p-4 text-left shadow-[0_1px_2px_rgba(66,52,33,0.05),0_14px_36px_-24px_rgba(66,52,33,0.4)] ring-1 ring-espresso/[0.06] transition-transform select-none active:scale-[0.985] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-caramel/50">
+        <motion.span className={`grid shrink-0 ${imagesPending ? "opacity-60 grayscale" : ""}`} animate={disabled ? { rotate: 0 } : { rotate: [0, -7, 6, -3, 0] }} transition={disabled ? undefined : { duration: 0.7, repeat: Infinity, repeatDelay: 2.4 }}>
+            <GiftBox className="relative h-16 w-16 rounded-2xl shadow-[0_10px_20px_-10px_rgba(153,97,48,0.8)]" />
+        </motion.span>
+        <span className="min-w-0 flex-1">
+            <span className="block text-[11px] font-semibold tracking-[0.16em] text-caramel uppercase">{eyebrow}</span>
+            <span className="mt-0.5 block text-lg leading-snug font-semibold tracking-[-0.02em] text-espresso">{title}</span>
+        </span>
+        {imagesPending || opening
+            ? <span className="shrink-0 px-2"><LoadingIndicator label="" /></span>
+            : <span className="shrink-0 rounded-full bg-espresso px-4 py-2.5 text-sm font-semibold text-white">Öffnen</span>}
+    </motion.button>;
+}
+
+/** Der Kalender: verschlossen, bereit zum Auspacken (Päckchen mit Schleife) oder ausgepackt (Bild der Zutat). */
+function DropCalendar({ drops, today, opening, disabled, onOpen, onView }: { drops: Drop[]; today: string; opening: number | null; disabled: boolean; onOpen: (dayIndex: number) => void; onView: (drop: Drop) => void }) {
+    const opened = drops.filter((drop) => drop.state === "revealed").length;
+    return <section className="mt-9" aria-labelledby="drops-title">
+        <SectionHeading id="drops-title" aside={<span className="text-xs text-bark/60 tabular-nums">{opened} von {drops.length} geöffnet</span>}>Deine Päckchen</SectionHeading>
+        <ul className="mt-2.5 grid grid-cols-4 gap-2 sm:grid-cols-6 sm:gap-2.5">
+            {drops.map((drop, index) => <motion.li key={drop.day_index} initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 + index * 0.03, type: "spring", stiffness: 420, damping: 28 }}>
+                <DropTile drop={drop} isToday={drop.date === today} opening={opening === drop.day_index} disabled={disabled} onOpen={onOpen} onView={onView} />
+            </motion.li>)}
+        </ul>
+    </section>;
+}
+
+function DropTile({ drop, isToday, opening, disabled, onOpen, onView }: { drop: Drop; isToday: boolean; opening: boolean; disabled: boolean; onOpen: (dayIndex: number) => void; onView: (drop: Drop) => void }) {
+    const base = "relative block aspect-square w-full overflow-hidden rounded-2xl select-none [-webkit-touch-callout:none]";
+    const when = formatDay(drop.date, { weekday: "long", day: "numeric", month: "long" });
+    if (drop.state === "available") {
+        return <motion.button type="button" onClick={() => onOpen(drop.day_index)} disabled={disabled} aria-label={`Päckchen vom ${when} öffnen`}
+            whileTap={{ scale: 0.9 }} animate={isToday && !disabled ? { rotate: [0, -5, 5, -2, 0] } : { rotate: 0 }} transition={isToday && !disabled ? { duration: 0.7, repeat: Infinity, repeatDelay: 2.2 } : undefined}
+            className={`${base} shadow-[0_10px_20px_-12px_rgba(153,97,48,0.9)] disabled:opacity-60 disabled:grayscale ${isToday ? "ring-2 ring-saffron ring-offset-2 ring-offset-linen" : ""}`}>
+            <GiftBox className="absolute inset-0" />
+            <span className="absolute top-1.5 left-2 text-[13px] font-bold text-white" aria-hidden="true">{dayOfMonth(drop.date)}</span>
+            {opening && <span className="absolute inset-0 grid place-items-center bg-espresso/45"><LoadingIndicator light label="" /></span>}
+        </motion.button>;
+    }
+    if (drop.state === "revealed") {
+        const items = drop.items ?? [];
+        return <button type="button" onClick={() => onView(drop)} aria-label={`Päckchen vom ${when} ansehen`} className={`${base} bg-white ring-1 ring-espresso/[0.07] transition-transform active:scale-95`}>
+            {items[0] ? <span className="absolute inset-0"><IngredientPicture item={items[0]} size="h-full w-full" /></span>
+                : <span className="absolute inset-0 grid place-items-center text-caramel"><Sparkles size={20} aria-hidden="true" /></span>}
+            <span className="absolute top-1.5 left-1.5 rounded-full bg-white/90 px-1.5 py-0.5 text-[11px] leading-none font-bold text-espresso" aria-hidden="true">{dayOfMonth(drop.date)}</span>
+            {items.length > 1 && <span className="absolute right-1.5 bottom-1.5 rounded-full bg-espresso/80 px-1.5 py-0.5 text-[10px] leading-none font-semibold text-white" aria-hidden="true">+{items.length - 1}</span>}
+        </button>;
+    }
+    return <div className={`${base} grid place-items-center bg-espresso/[0.045] text-bark/45`}>
+        <span className="text-center leading-none" aria-hidden="true">
+            <span className="block text-[10px] font-semibold tracking-wide uppercase">{weekday(drop.date)}</span>
+            <span className="mt-1 block text-lg font-semibold tracking-[-0.03em]">{dayOfMonth(drop.date)}</span>
+        </span>
+        <span className="sr-only">{when}, noch verschlossen</span>
+    </div>;
+}
+
+function MyIngredients({ title, items, carted, onCart }: { title: string; items: DropItem[]; carted: Set<number>; onCart: (indices: number[]) => void }) {
+    return <section className="mt-9" aria-labelledby="mine-title">
+        <SectionHeading id="mine-title" aside={items.length > 0 && <button type="button" onClick={() => onCart(items.map((_, index) => index))}
+            className="-mr-2 flex h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold text-caramel transition hover:bg-caramel/10 active:scale-95 active:bg-caramel/15">
+            <ShoppingBasket size={14} strokeWidth={2.25} aria-hidden="true" />Alle auf die Liste
+        </button>}>{title}</SectionHeading>
+        {items.length === 0
+            ? <p className="mt-2.5 rounded-2xl border border-dashed border-espresso/15 px-4 py-5 text-center text-sm text-bark">Noch nichts ausgepackt – deine Zutaten landen hier.</p>
+            : <ul className="mt-2.5 overflow-hidden rounded-2xl bg-white ring-1 ring-espresso/[0.07]">{items.map((item, index) => <li key={index} className="group/row relative flex items-center gap-3 py-2.5 pr-2 pl-3">
+                <span aria-hidden="true" className="pointer-events-none absolute top-0 right-0 left-[4.25rem] h-px bg-espresso/[0.07] group-first/row:hidden" />
+                <IngredientPicture item={item} size="h-11 w-11" />
+                <span className="min-w-0 flex-1">
+                    <span className="block text-[15px] leading-snug font-medium break-words text-espresso"><HandicapName item={item} /></span>
+                    {item.handicap && <span className="mt-0.5 block text-[11px] font-semibold text-red-700">{item.handicap.title}</span>}
+                </span>
+                <span className="shrink-0 text-sm font-medium text-bark tabular-nums">{formatAmount(item.amount, item.unit)}</span>
+                <button type="button" onClick={() => onCart([index])} aria-label={carted.has(index) ? `${item.name} ist auf der Einkaufsliste` : `${item.name} zur Einkaufsliste`}
+                    className={`grid h-10 w-10 shrink-0 place-items-center rounded-full transition active:scale-90 ${carted.has(index) ? "bg-saffron/30 text-espresso" : "text-bark hover:bg-linen hover:text-espresso"}`}>
+                    <motion.span key={String(carted.has(index))} initial={carted.has(index) ? { scale: 0.4 } : false} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 600, damping: 22 }} className="grid">
+                        {carted.has(index) ? <Check size={17} strokeWidth={2.5} aria-hidden="true" /> : <ShoppingBasket size={17} aria-hidden="true" />}
+                    </motion.span>
+                </button>
+            </li>)}</ul>}
+    </section>;
+}
+
+function Standings({ stats, total, showTips }: { stats: EventData["stats"]; total: number; showTips: boolean }) {
+    const sorted = [...stats].sort((a, b) => Number(b.is_me) - Number(a.is_me));
+    return <section className="mt-9" aria-labelledby="stats-title">
+        <SectionHeading id="stats-title">Stand</SectionHeading>
+        <ul className="mt-2.5 overflow-hidden rounded-2xl bg-white ring-1 ring-espresso/[0.07]">{sorted.map((stat, index) => {
+            const handle = stat.email.split("@")[0];
+            const name = stat.is_me ? "Du" : handle.charAt(0).toUpperCase() + handle.slice(1);
+            return <li key={stat.email} className="group/row relative flex items-center gap-3 px-4 py-3.5">
+                <span aria-hidden="true" className="pointer-events-none absolute top-0 right-0 left-[3.75rem] h-px bg-espresso/[0.07] group-first/row:hidden" />
+                <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold uppercase ${stat.is_me ? "bg-caramel text-white" : "bg-cream text-caramel"}`} aria-hidden="true">{name.charAt(0)}</span>
+                <span className="min-w-0 flex-1">
+                    <span className="flex items-baseline justify-between gap-2">
+                        <span className="truncate text-[15px] font-medium text-espresso" title={stat.email}>{name}</span>
+                        <span className="shrink-0 text-xs text-bark tabular-nums">{stat.revealed}/{total}{showTips && ` · ${plural(stat.tips, "Tipp", "Tipps")}`}</span>
+                    </span>
+                    <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-espresso/[0.07]" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={stat.revealed} aria-label={`${name}: geöffnete Päckchen`}>
+                        <motion.span className="block h-full rounded-full bg-caramel" initial={{ width: 0 }} animate={{ width: `${(stat.revealed / Math.max(1, total)) * 100}%` }} transition={{ duration: 0.6, ease, delay: 0.15 + index * 0.06 }} />
+                    </span>
+                </span>
+            </li>;
+        })}</ul>
+    </section>;
+}
+
+/** Löschen in zwei Schritten mit klarer Erklärung – statt Browser-Dialog. */
+function DeleteEvent({ busy, onConfirm }: { busy: boolean; onConfirm: () => void }) {
+    const [confirming, setConfirming] = useState(false);
+    return <div className="mt-14">
+        <AnimatePresence mode="wait" initial={false}>
+            {confirming
+                ? <motion.div key="confirm" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.12 } }} transition={{ duration: 0.25, ease }} className="rounded-[1.75rem] bg-red-50 p-5" role="alertdialog" aria-labelledby="delete-title" aria-describedby="delete-text">
+                    <p id="delete-title" className="font-semibold text-red-900">Event für alle löschen?</p>
+                    <p id="delete-text" className="mt-1 text-sm leading-6 text-red-800">Päckchen, Rezepte und Tipps gehen für alle Teilnehmenden verloren. Das lässt sich nicht rückgängig machen.</p>
+                    <div className="mt-4 grid grid-cols-2 gap-2">
+                        <button type="button" onClick={() => setConfirming(false)} disabled={busy} autoFocus className="min-h-11 rounded-full bg-white text-sm font-semibold text-espresso ring-1 ring-espresso/10 transition active:scale-95">Abbrechen</button>
+                        <button type="button" onClick={onConfirm} disabled={busy} className="min-h-11 rounded-full bg-red-600 text-sm font-semibold text-white transition active:scale-95 disabled:opacity-60">{busy ? "Wird gelöscht…" : "Endgültig löschen"}</button>
+                    </div>
+                </motion.div>
+                : <motion.div key="button" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.12 } }} className="flex justify-center">
+                    <button type="button" onClick={() => setConfirming(true)} className="flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 active:scale-95 active:bg-red-50"><Trash2 size={16} aria-hidden="true" />Event löschen</button>
+                </motion.div>}
+        </AnimatePresence>
+    </div>;
+}
+
+function DetailSkeleton() {
+    return <div className="mt-3 motion-safe:animate-shimmer" role="status" aria-label="Event wird geladen…">
+        <div aria-hidden="true">
+            <div className="h-2.5 w-24 rounded-full bg-espresso/[0.08]" />
+            <div className="mt-4 h-8 w-4/5 rounded-full bg-espresso/[0.08]" />
+            <div className="mt-3 h-3 w-1/2 rounded-full bg-espresso/[0.06]" />
+            <div className="mt-6 h-2 w-full rounded-full bg-espresso/[0.06]" />
+            <div className="mt-9 grid grid-cols-4 gap-2">{Array.from({ length: 8 }, (_, index) => <div key={index} className="aspect-square rounded-2xl bg-espresso/[0.05]" />)}</div>
+        </div>
+    </div>;
+}
+
 export function EventDetail({ eventId }: { eventId: string }) {
     const [event, setEvent] = useState<EventData | null>(null);
     const [error, setError] = useState("");
     const [opening, setOpening] = useState<number | null>(null);
-    const [revealed, setRevealed] = useState<Revealed | null>(null);
+    const [revealed, setRevealed] = useState<(Revealed & { again?: boolean }) | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [gameBusy, setGameBusy] = useState(false);
     // Indices of "my" ingredients already put on the shopping list in this visit (for the check mark).
     const [carted, setCarted] = useState<Set<number>>(new Set());
-    const { toast, show: showToast } = useToast();
+    const { toast, show: showToast, hide: hideToast } = useToast();
 
     async function gameAction(action: "memory-start" | "blind-reveal") {
         setGameBusy(true); setError("");
@@ -202,7 +393,6 @@ export function EventDetail({ eventId }: { eventId: string }) {
     const router = useRouter();
 
     async function removeEvent() {
-        if (!window.confirm("Event für alle endgültig löschen? Pakete, Rezepte und Tipps gehen verloren.")) return;
         setDeleting(true); setError("");
         try {
             await eventApi(`/admin/events/${eventId}`, { method: "DELETE" });
@@ -238,7 +428,14 @@ export function EventDetail({ eventId }: { eventId: string }) {
         } catch (caught) { setError((caught as Error).message); } finally { setOpening(null); }
     }
 
-    if (!event) return <main className="mx-auto w-full max-w-3xl px-5 pt-10 sm:px-8">{error ? <p role="alert" className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p> : <LoadingIndicator label="Event wird geladen…" />}</main>;
+    if (!event) return <Frame>
+        {error
+            ? <div role="alert" className="mt-6 rounded-[1.75rem] bg-red-50 px-5 py-5 text-sm text-red-800">
+                <p className="font-medium">{error}</p>
+                <button type="button" onClick={() => { setError(""); void load(); }} className="mt-3 rounded-full bg-white px-4 py-2 text-sm font-semibold text-red-800 ring-1 ring-red-200 transition active:scale-95">Erneut versuchen</button>
+            </div>
+            : <DetailSkeleton />}
+    </Frame>;
 
     const myItems = event.drops.flatMap((drop) => drop.items ?? []);
 
@@ -252,18 +449,30 @@ export function EventDetail({ eventId }: { eventId: string }) {
     }
     const embargo = event.effects.includes("bild_embargo") && event.phase !== "finished";
     const activeMedium = event.handicaps.filter((entry) => entry.tier !== "light");
-    const daysLeft = Math.round((Date.parse(event.cook_date) - Date.parse(event.today)) / 86_400_000);
+    const stage = stageOf(event, event.today);
+    const available = event.drops.filter((drop) => drop.state === "available");
+    const teasers = event.drops.filter((drop) => drop.state === "revealed" && drop.teaser);
 
-    return <main className="mx-auto w-full max-w-3xl px-5 pt-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:px-8 sm:pt-8">
-        <Link href="/events" className="-ml-1 flex min-h-11 w-fit items-center gap-1 px-1 text-sm font-semibold text-caramel"><ArrowLeft size={15} aria-hidden="true" /> Alle Events</Link>
-        <p className="mt-6 text-xs font-bold tracking-[0.2em] text-caramel uppercase">{event.categories.join(" · ")}</p>
-        <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-espresso sm:text-4xl">{event.title}</h1>
-        <p className="mt-2 text-sm text-bark">Kochtag: {formatDay(event.cook_date, { weekday: "long", day: "numeric", month: "long" })}{!event.is_cook_day && daysLeft > 0 && ` · noch ${daysLeft} ${daysLeft === 1 ? "Tag" : "Tage"}`}</p>
+    return <Frame>
+        <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease }} className="mt-4">
+            <StageLabel stage={stage} />
+            <h1 className="mt-2.5 text-[2.25rem] leading-[1.05] font-semibold tracking-[-0.05em] text-balance text-espresso sm:text-5xl">{event.title}</h1>
+            <p className="mt-2 text-sm leading-6 text-bark">{headline(event, stage)}</p>
+            {event.categories.length > 0 && <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Gerichte">{event.categories.map((category) => <li key={category} className="rounded-full bg-cream px-2.5 py-1 text-xs font-medium text-bark">{category}</li>)}</ul>}
+            {stage.kind === "running" && <DayTrack day={stage.day} total={stage.total} delay={0.15} />}
+        </motion.header>
+        {/* Die tägliche Hauptaktion steht ganz oben – noch vor den Handicaps. */}
+        {event.status === "active" && !event.is_cook_day && available.length > 0 && <TodayCard drops={available} today={event.today} imagesPending={event.images_pending} opening={opening !== null} onOpen={reveal} />}
         {event.handicaps.length > 0 && <HandicapBar handicaps={event.handicaps} spent={event.penalty_spent} />}
         {error && <p role="alert" className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
 
-        {event.status === "generating" && <div className="mt-10 rounded-3xl bg-white p-6"><LoadingIndicator label={event.progress || "Das Event wird vorbereitet…"} /></div>}
-        {event.status === "failed" && <p className="mt-10 rounded-3xl bg-red-50 p-6 text-sm text-red-800">{event.progress}</p>}
+        {event.status === "generating" && <div className="mt-8 rounded-[1.75rem] bg-white p-5 ring-1 ring-espresso/[0.06]">
+            <p className="text-sm font-medium text-espresso">{event.progress || "Das Event wird vorbereitet…"}</p>
+            <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-espresso/[0.07]" aria-hidden="true">
+                <motion.div className="h-full w-1/3 rounded-full bg-caramel/60" animate={{ x: ["-100%", "300%"] }} transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }} />
+            </div>
+        </div>}
+        {event.status === "failed" && <p className="mt-8 rounded-[1.75rem] bg-red-50 p-5 text-sm leading-6 text-red-800">{event.progress || "Beim Vorbereiten ist etwas schiefgelaufen."}</p>}
 
         {event.status === "active" && event.is_cook_day && <section className="mt-10" aria-labelledby="reveal-heading">
             <h2 id="reveal-heading" className="sr-only">Die Gerichte</h2>
@@ -316,71 +525,23 @@ export function EventDetail({ eventId }: { eventId: string }) {
         </section>}
 
         {event.status === "active" && <>
-            {event.pantry.length > 0 && <section className="mt-10 rounded-3xl bg-cream/60 p-5" aria-labelledby="pantry-title">
-                <h2 id="pantry-title" className="text-sm font-semibold text-espresso">Das solltet ihr zu Hause haben</h2>
-                <p className="mt-1 text-sm text-bark">{event.pantry.join(", ")}</p>
+            {!event.is_cook_day && <DropCalendar drops={event.drops} today={event.today} opening={opening} disabled={opening !== null || event.images_pending} onOpen={reveal}
+                onView={(drop) => setRevealed({ day_index: drop.day_index, items: drop.items ?? [], teaser: drop.teaser ?? null, again: true })} />}
+            <MyIngredients title={event.is_cook_day ? "Was du mitbringen solltest" : "Deine Zutaten"} items={myItems} carted={carted} onCart={addToCart} />
+            {teasers.length > 0 && <section className="mt-9" aria-labelledby="hints-title">
+                <SectionHeading id="hints-title">Hinweise</SectionHeading>
+                <ul className="mt-2.5 space-y-2">{teasers.map((drop) => <li key={drop.day_index} className="flex gap-3 rounded-2xl bg-saffron/15 px-4 py-3 text-sm leading-6 text-espresso"><Sparkles size={16} className="mt-1 shrink-0 text-caramel" aria-hidden="true" />{drop.teaser}</li>)}</ul>
             </section>}
-
-            {!event.is_cook_day && <section className="mt-10" aria-labelledby="drops-title">
-                <h2 id="drops-title" className="text-xl font-semibold text-espresso">Deine Pakete</h2>
-                {event.images_pending && <p className="mt-2 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso"><LoadingIndicator label="Die Bilder werden noch gemalt – gleich kannst du deine Pakete öffnen." /></p>}
-                <ul className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5">{event.drops.map((drop) => {
-                    const isToday = drop.date === event.today;
-                    return <li key={drop.day_index}>
-                        {drop.state === "available" ? <motion.button type="button" onClick={() => reveal(drop.day_index)} disabled={opening !== null || event.images_pending} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                            animate={isToday && !event.images_pending ? { rotate: [0, -3, 3, 0] } : undefined} transition={isToday && !event.images_pending ? { duration: 0.6, repeat: Infinity, repeatDelay: 2 } : undefined}
-                            className="flex aspect-square w-full touch-manipulation flex-col disabled:grayscale disabled:opacity-60 items-center justify-center rounded-3xl bg-gradient-to-br from-saffron to-caramel text-white shadow-[0_8px_20px_rgba(153,97,48,0.3)]">
-                            {opening === drop.day_index ? <LoadingIndicator light label="" /> : <Gift size={24} aria-hidden="true" />}
-                            <span className="mt-1 text-xs font-bold">{isToday ? "Heute" : formatDay(drop.date)}</span>
-                            <span className="sr-only">Paket öffnen</span>
-                        </motion.button>
-                            : <div className={`flex aspect-square w-full flex-col items-center justify-center rounded-3xl p-2 text-center ${drop.state === "revealed" ? "bg-white shadow-[0_1px_2px_rgba(66,52,33,0.06)]" : "bg-espresso/5 text-bark/50"}`}>
-                                {drop.state === "revealed"
-                                    ? (drop.items?.[0] ? <IngredientPicture item={drop.items[0]} size="h-10 w-10" /> : <Sparkles size={20} className="text-caramel" aria-hidden="true" />)
-                                    : <Lock size={18} aria-hidden="true" />}
-                                <span className="mt-1 text-[11px] font-semibold text-bark">{formatDay(drop.date)}</span>
-                                {drop.state === "revealed" && <span className="sr-only">geöffnet</span>}
-                            </div>}
-                    </li>;
-                })}</ul>
+            {event.pantry.length > 0 && <section className="mt-9" aria-labelledby="pantry-title">
+                <SectionHeading id="pantry-title">Solltet ihr zu Hause haben</SectionHeading>
+                <ul className="mt-2.5 flex flex-wrap gap-1.5">{event.pantry.map((entry) => <li key={entry} className="rounded-full bg-white px-3 py-1.5 text-sm text-espresso ring-1 ring-espresso/[0.07]">{entry}</li>)}</ul>
             </section>}
-
-            <section className="mt-10" aria-labelledby="mine-title">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h2 id="mine-title" className="text-xl font-semibold text-espresso">{event.is_cook_day ? "Was du mitbringen solltest" : "Deine Einkaufsliste"}</h2>
-                    {myItems.length > 0 && <button type="button" onClick={() => addToCart(myItems.map((_, index) => index))} className="flex min-h-11 items-center gap-2 rounded-full bg-espresso px-4 text-sm font-semibold text-white transition hover:bg-caramel">
-                        <ShoppingBasket size={16} aria-hidden="true" /> Alle zur Einkaufsliste
-                    </button>}
-                </div>
-                {myItems.length === 0 ? <p className="mt-3 text-sm text-bark">Noch nichts aufgedeckt.</p>
-                    : <ul className="mt-4 space-y-2">{myItems.map((item, index) => <li key={index} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
-                        <IngredientPicture item={item} size="h-12 w-12" />
-                        <span className="min-w-0 flex-1 text-sm font-semibold break-words text-espresso"><HandicapName item={item} />{item.handicap && <span className="block text-[11px] font-bold text-red-700">{item.handicap.title}</span>}</span>
-                        <span className="shrink-0 text-sm font-semibold text-caramel">{formatAmount(item.amount, item.unit)}</span>
-                        <button type="button" onClick={() => addToCart([index])} aria-label={`${item.name} zur Einkaufsliste`} className={`grid h-11 w-11 shrink-0 place-items-center rounded-full transition ${carted.has(index) ? "bg-saffron/30 text-espresso" : "text-bark hover:bg-linen hover:text-espresso"}`}>
-                            {carted.has(index) ? <Check size={17} aria-hidden="true" /> : <ShoppingBasket size={17} aria-hidden="true" />}
-                        </button>
-                    </li>)}</ul>}
-                {event.drops.filter((drop) => drop.state === "revealed" && drop.teaser).length > 0 && <ul className="mt-4 space-y-2">{event.drops.filter((drop) => drop.state === "revealed" && drop.teaser).map((drop) => <li key={drop.day_index} className="flex gap-2 text-sm text-bark"><Sparkles size={14} className="mt-1 shrink-0 text-caramel" aria-hidden="true" />{drop.teaser}</li>)}</ul>}
-            </section>
-
-            <section className="mt-10" aria-labelledby="stats-title">
-                <h2 id="stats-title" className="text-xl font-semibold text-espresso">Stand</h2>
-                <ul className="mt-4 grid gap-3 sm:grid-cols-2">{event.stats.map((stat) => <li key={stat.email} className="rounded-3xl bg-white p-5 shadow-[0_1px_2px_rgba(66,52,33,0.06)]">
-                    <p className="truncate text-sm font-semibold text-espresso">{stat.is_me ? "Du" : stat.email}</p>
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-espresso/10" role="progressbar" aria-valuemin={0} aria-valuemax={event.days_total} aria-valuenow={stat.revealed} aria-label="Geöffnete Pakete">
-                        <div className="h-full rounded-full bg-caramel transition-all" style={{ width: `${(stat.revealed / Math.max(1, event.days_total)) * 100}%` }} />
-                    </div>
-                    <p className="mt-2 text-xs text-bark">{stat.revealed} / {event.days_total} Pakete geöffnet{event.is_cook_day && ` · ${stat.tips} Tipps`}</p>
-                </li>)}</ul>
-            </section>
+            <Standings stats={event.stats} total={event.days_total} showTips={event.is_cook_day} />
         </>}
 
-        {event.is_creator && <button type="button" onClick={removeEvent} disabled={deleting} className="mt-14 flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-red-200 px-6 py-3 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50 sm:w-auto">
-            <Trash2 size={16} aria-hidden="true" /> {deleting ? "Wird gelöscht…" : "Event löschen"}
-        </button>}
+        {event.is_creator && <DeleteEvent busy={deleting} onConfirm={removeEvent} />}
 
-        <AnimatePresence>{revealed && <RevealModal drop={revealed} onClose={() => setRevealed(null)} />}</AnimatePresence>
-        <Toast toast={toast} />
-    </main>;
+        <AnimatePresence>{revealed && <RevealModal drop={revealed} startAtSummary={revealed.again} onClose={() => setRevealed(null)} />}</AnimatePresence>
+        <Toast toast={toast} onDismiss={hideToast} />
+    </Frame>;
 }
