@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, ChefHat, Gift, House, ShoppingBasket } from "lucide-react";
+import { ChefHat } from "lucide-react";
 
 const links = [
     { href: "/", label: "Start" },
@@ -31,28 +31,5 @@ export function SiteHeader() {
                 </nav>
             </div>
         </header>
-    );
-}
-
-export function MobileNav() {
-    const items = [
-        { href: "/", icon: House, label: "Start" },
-        { href: "/recipes", icon: BookOpen, label: "Rezepte" },
-        { href: "/einkaufsliste", icon: ShoppingBasket, label: "Einkauf" },
-        { href: "/events", icon: Gift, label: "Events" },
-    ];
-    return (
-        <nav aria-label="Schnellnavigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-espresso/8 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-            <ul className="mx-auto flex max-w-md justify-around px-4 py-2.5">
-                {items.map((item) => (
-                    <li key={item.href}>
-                        <Link href={item.href} className="flex min-w-14 flex-col items-center gap-0.5 text-[10px] font-bold text-bark">
-                            <item.icon size={18} className="text-caramel" strokeWidth={2.25} aria-hidden="true" />
-                            {item.label}
-                        </Link>
-                    </li>
-                ))}
-            </ul>
-        </nav>
     );
 }

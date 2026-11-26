@@ -6,6 +6,7 @@ import { FormEvent, ReactNode, useEffect, useRef, useState, useSyncExternalStore
 import { ArrowUp, Beef, Carrot, Cloud, CloudOff, Croissant, CupSoda, LucideIcon, Milk, Package, RefreshCw, Share2, ShoppingBasket, Snowflake, Sparkles, Trash2, Wheat, WifiOff } from "lucide-react";
 
 import { Toast, toastActionClass, useToast } from "@/components/toast";
+import { tick } from "@/lib/haptics";
 import {
     addShoppingItems, displayQuantity, parseShoppingInput, parseShoppingTextLocally, removeShoppingItems, replaceShoppingList, restoreShoppingItem,
     sectionLabels, sectionOrder, shareText, shoppingListText, startShoppingSync, useShoppingList, useShoppingListLoaded, useShoppingSyncStatus,
@@ -36,9 +37,6 @@ function subscribeOnline(onChange: () => void) {
     return () => { window.removeEventListener("online", onChange); window.removeEventListener("offline", onChange); };
 }
 const useIsOnline = () => useSyncExternalStore(subscribeOnline, () => navigator.onLine, () => true);
-
-/** Kurzes Antippen-Feedback (Android; iOS-Safari kennt keine Vibration). */
-const tick = () => { try { navigator.vibrate?.(8); } catch { /* egal */ } };
 
 const without = (set: Set<string>, ids: Iterable<string>) => { const next = new Set(set); for (const id of ids) next.delete(id); return next; };
 
@@ -264,7 +262,7 @@ export function ShoppingList() {
 
                 <form onSubmit={submit} className="mt-6 flex items-center gap-2 rounded-full bg-white py-1.5 pr-1.5 pl-4 shadow-[0_1px_2px_rgba(66,52,33,0.05),0_16px_36px_-22px_rgba(66,52,33,0.35)] ring-1 ring-espresso/[0.08] transition-shadow duration-200 focus-within:shadow-[0_1px_2px_rgba(66,52,33,0.05),0_18px_40px_-20px_rgba(153,97,48,0.45)] focus-within:ring-2 focus-within:ring-caramel/40">
                     <Sparkles size={17} strokeWidth={2} className={`shrink-0 text-caramel ${pending.length ? "motion-safe:animate-shimmer" : ""}`} aria-hidden="true" />
-                    <input value={text} onChange={(event) => setText(event.target.value)} placeholder="z. B. 2 Eier, 500 g Mehl und Milch" aria-label="Einträge hinzufügen – Crave sortiert sie automatisch" maxLength={2000}
+                    <input value={text} onChange={(event) => setText(event.target.value)} placeholder="z. B. 2 Eier, Mehl und Milch" aria-label="Einträge hinzufügen – Crave sortiert sie automatisch" maxLength={2000}
                         enterKeyHint="send" autoComplete="off"
                         className="h-10 min-w-0 flex-1 bg-transparent text-base text-espresso outline-none placeholder:text-bark/45" />
                     {/* pointerdown abfangen: Das Feld behält den Fokus, die Tastatur bleibt für den nächsten Eintrag offen. */}

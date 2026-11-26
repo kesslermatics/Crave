@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Sora } from "next/font/google";
 import "./globals.css";
+import { MobileNav } from "@/components/mobile-nav";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 
 const sora = Sora({
@@ -40,6 +41,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         {children}
+        {/* Im Layout statt pro Seite: bleibt beim Seitenwechsel stehen, damit der Aktiv-Indikator gleiten kann. */}
+        <MobileNav />
         <ServiceWorkerRegister />
       </body>
     </html>
