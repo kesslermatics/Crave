@@ -69,6 +69,51 @@ html {
   /* iOS must not inflate text sizes on rotation */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* No grey flash on tap (Android/iOS); components show their own pressed states. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* No double-tap zoom when tapping quickly (e.g. checking off several items in a row).
+   Pinch-to-zoom keeps working. */
+html,
+a,
+button,
+label,
+input,
+select,
+textarea,
+[role="button"],
+[role="checkbox"] {
+  touch-action: manipulation;
+}
+
+/* iOS Safari zooms into every focused field below 16px. On touch devices, form fields
+   therefore get at least 16px. Unlayered on purpose so it beats Tailwind's text-sm & co.
+   (all fields in the app are ≤ 16px; a deliberately larger field would need its own rule). */
+@media (pointer: coarse) {
+  input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
+/* Strikethrough that draws from left to right, also across multiple lines.
+   Usage: <span class="strike" data-checked="true">…</span> */
+.strike {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 58%;
+  background-size: 0% 1.5px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition:
+    background-size 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.2s ease;
+}
+
+.strike[data-checked="true"] {
+  background-size: 100% 1.5px;
 }
 
 /* Nothing may ever widen the page beyond the screen (that forced pinch-zooming out on phones).

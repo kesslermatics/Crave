@@ -188,14 +188,25 @@ function write(items: ShoppingItem[]) {
 // ---- Sync-Status (für die kleine Anzeige „Gespeichert“ / „Offline“) ---------
 
 let syncStatus: SyncStatus = "idle";
+/** Ob in dieser Sitzung schon ein Abgleich versucht wurde – bis dahin zeigt eine leere Liste einen Ladezustand. */
+let hasLoaded = false;
 const statusListeners = new Set<() => void>();
+const subscribeStatus = (listener: () => void) => { statusListeners.add(listener); return () => { statusListeners.delete(listener); }; };
 function setStatus(next: SyncStatus) {
     if (next === syncStatus) return;
     syncStatus = next;
     statusListeners.forEach((listener) => listener());
 }
+function markLoaded() {
+    if (hasLoaded) return;
+    hasLoaded = true;
+    statusListeners.forEach((listener) => listener());
+}
 export function useShoppingSyncStatus() {
-    return useSyncExternalStore((listener) => { statusListeners.add(listener); return () => statusListeners.delete(listener); }, () => syncStatus, () => "idle" as SyncStatus);
+    return useSyncExternalStore(subscribeStatus, () => syncStatus, () => "idle" as SyncStatus);
+}
+export function useShoppingListLoaded() {
+    return useSyncExternalStore(subscribeStatus, () => hasLoaded, () => false);
 }
 
 // ---- Abgleich mit dem Server -------------------------------------------------
@@ -225,7 +236,7 @@ const toServer = (item: ShoppingItem) => ({
 export async function syncShoppingList(fetcher: typeof fetch = fetch): Promise<void> {
     if (syncInFlight) { syncAgain = true; return; }
     const token = window.sessionStorage.getItem("crave_access_token");
-    if (!token || navigator.onLine === false) { setStatus("offline"); return; }
+    if (!token || navigator.onLine === false) { setStatus("offline"); markLoaded(); return; }
 
     const user = currentUserId();
     const local = new Map(read().map((item) => [item.id, item])); // zuerst lesen: migriert ggf. Altdaten in die Outbox
@@ -267,6 +278,7 @@ export async function syncShoppingList(fetcher: typeof fetch = fetch): Promise<v
         setStatus(error instanceof TypeError ? "offline" : "error");
     } finally {
         syncInFlight = false;
+        markLoaded();
         if (syncAgain) { syncAgain = false; scheduleSync(0); }
     }
 }
@@ -340,7 +352,12 @@ export function addShoppingItems(drafts: ShoppingDraft[], source?: string): { ad
     return { added, merged, ids };
 }
 
-export function removeShoppingItem(id: string) { write(read().filter((item) => item.id !== id)); }
+export function removeShoppingItem(id: string) { removeShoppingItems([id]); }
+/** Entfernt mehrere Einträge in einem Schritt (ein Speichern, ein Sync). */
+export function removeShoppingItems(ids: Iterable<string>) {
+    const remove = new Set(ids);
+    if (remove.size) write(read().filter((item) => !remove.has(item.id)));
+}
 export function restoreShoppingItem(item: ShoppingItem) { if (!read().some((entry) => entry.id === item.id)) write([...read(), item]); }
 export function clearShoppingList() { write([]); }
 export function replaceShoppingList(items: ShoppingItem[]) { write(items); }
