@@ -1,10 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import { ArrowUp, MessageCircleQuestion } from "lucide-react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { MessageCircleQuestion } from "lucide-react";
 import { eventApi } from "@/lib/events";
-import { FormattedMessage } from "@/components/formatted-message";
-import { LoadingIndicator } from "@/components/loading-indicator";
+import { AnswerBubble, ChatComposer, QuestionBubble, TypingBubble } from "@/components/event-chat";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -24,9 +23,12 @@ export function EventDebrief({ eventId }: { eventId: string }) {
     const [question, setQuestion] = useState("");
     const [sending, setSending] = useState(false);
     const [error, setError] = useState("");
+    const endRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         try { sessionStorage.setItem(storageKey, JSON.stringify(messages)); } catch { /* storage unavailable */ }
     }, [messages, storageKey]);
+
+    const scrollToEnd = () => window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
 
     async function ask(text: string) {
         const trimmed = text.trim();
@@ -35,9 +37,11 @@ export function EventDebrief({ eventId }: { eventId: string }) {
         const history = messages.slice(-HISTORY_MESSAGES).map((m) => ({ role: m.role, content: m.content.slice(0, HISTORY_CHARS) }));
         setMessages((current) => [...current, { role: "user", content: trimmed }]);
         setQuestion("");
+        scrollToEnd();
         try {
             const { answer } = await eventApi<{ answer: string }>(`/events/${eventId}/debrief`, { method: "POST", body: { question: trimmed, history } });
             setMessages((current) => [...current, { role: "assistant", content: answer }]);
+            scrollToEnd();
         } catch (caught) {
             setError((caught as Error).message);
             setMessages((current) => current.slice(0, -1));
@@ -47,20 +51,20 @@ export function EventDebrief({ eventId }: { eventId: string }) {
 
     function submit(event: FormEvent) { event.preventDefault(); void ask(question); }
 
-    return <section className="mt-14 border-t border-espresso/10 pt-10" aria-labelledby="debrief-title">
-        <h2 id="debrief-title" className="flex items-center gap-2 text-xl font-semibold text-espresso"><MessageCircleQuestion size={20} className="text-caramel" aria-hidden="true" /> Nachbesprechung</h2>
-        <p className="mt-1 text-sm text-bark">Jetzt ist alles aufgedeckt. Fragt den Koch-Coach, was ihr besser machen könnt – er kennt Rezepte, Handicaps, eure Fotos, das Jury-Urteil und eure Tipps. Kostet keine Strafpunkte.</p>
-        <div className="mt-6 space-y-3">
+    return <section className="mt-10" aria-labelledby="debrief-title">
+        <h2 id="debrief-title" className="flex items-center gap-2 text-xl font-semibold tracking-[-0.02em] text-espresso"><MessageCircleQuestion size={20} className="text-caramel" aria-hidden="true" /> Nachbesprechung</h2>
+        <p className="mt-1 text-sm leading-6 text-bark">Jetzt ist alles aufgedeckt. Fragt den Koch-Coach, was ihr besser machen könnt – er kennt Rezepte, Handicaps, eure Fotos, das Jury-Urteil und eure Tipps. Kostet keine Strafpunkte.</p>
+        <div className="mt-5 space-y-3" aria-live="polite">
             {messages.map((message, index) => message.role === "user"
-                ? <p key={index} className="ml-auto max-w-[85%] rounded-[1.25rem] rounded-br-md bg-espresso px-4 py-2.5 text-sm break-words text-white sm:max-w-md">{message.content}</p>
-                : <div key={index} className="max-w-[92%] rounded-[1.25rem] rounded-bl-md bg-white px-4 py-2.5 text-sm leading-6 break-words text-espresso shadow-[0_1px_2px_rgba(66,52,33,0.06)] sm:max-w-xl"><FormattedMessage text={message.content} /></div>)}
-            {sending && <LoadingIndicator label="Der Coach schaut sich alles an…" />}
+                ? <QuestionBubble key={index}>{message.content}</QuestionBubble>
+                : <AnswerBubble key={index} text={message.content} />)}
+            {sending && <TypingBubble label="Der Coach schaut sich alles an…" />}
+            <div ref={endRef} />
         </div>
-        {messages.length === 0 && !sending && <div className="mt-2 flex flex-wrap gap-2">{SUGGESTIONS.map((suggestion) => <button key={suggestion} type="button" onClick={() => void ask(suggestion)} className="rounded-full bg-white px-4 py-2 text-left text-sm font-semibold text-espresso ring-1 ring-espresso/10 transition hover:ring-caramel/40">{suggestion}</button>)}</div>}
+        {messages.length === 0 && !sending && <div className="flex flex-wrap gap-2">{SUGGESTIONS.map((suggestion) => <button key={suggestion} type="button" onClick={() => void ask(suggestion)} className="rounded-full bg-white px-4 py-2 text-left text-sm font-medium text-espresso ring-1 ring-espresso/10 transition hover:ring-caramel/40 active:scale-[0.97]">{suggestion}</button>)}</div>}
         {error && <p role="alert" className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
-        <form onSubmit={submit} className="mt-6 flex items-center gap-2 rounded-full border border-espresso/10 bg-white py-1.5 pr-1.5 pl-5 focus-within:border-caramel/50 focus-within:ring-4 focus-within:ring-caramel/10">
-            <input value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={800} placeholder="z. B. Warum war unser Dessert zu flüssig?" aria-label="Frage für die Nachbesprechung" enterKeyHint="send" className="min-w-0 flex-1 bg-transparent py-2 text-base text-espresso outline-none placeholder:text-bark/50 sm:text-sm" />
-            <button disabled={sending || question.trim().length < 2} aria-label="Frage senden" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-caramel text-white disabled:bg-espresso/15"><ArrowUp size={17} strokeWidth={2.5} aria-hidden="true" /></button>
-        </form>
+        <div className="mt-5">
+            <ChatComposer value={question} onChange={setQuestion} onSubmit={submit} placeholder="z. B. Warum war unser Dessert zu flüssig?" label="Frage für die Nachbesprechung" sendLabel="Frage senden" canSend={!sending && question.trim().length >= 2} />
+        </div>
     </section>;
 }

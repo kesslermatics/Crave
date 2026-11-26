@@ -1,5 +1,6 @@
 "use client";
 
+import { ReactNode, useId } from "react";
 import { motion } from "framer-motion";
 import { ChefHat } from "lucide-react";
 
@@ -20,6 +21,12 @@ const DAY_MS = 86_400_000;
 const dayNumber = (iso: string) => Math.round(Date.parse(`${iso}T00:00:00Z`) / DAY_MS);
 
 export const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+/** Anzeigename aus der E-Mail: „lena@…“ → „Lena“, man selbst ist „Du“. */
+export function playerName(email: string, isMe = false) {
+    if (isMe) return "Du";
+    const handle = email.split("@")[0] || email;
+    return handle.charAt(0).toUpperCase() + handle.slice(1);
+}
 /** Datum, das nie mitten im Wort umbricht („So.,⏎6. Dez.“). */
 export const day = (iso: string, options?: Intl.DateTimeFormatOptions) => formatDay(iso, options).replace(/ /g, " ");
 
@@ -91,4 +98,24 @@ export function GiftBox({ className }: { className: string }) {
         <span className="absolute inset-x-0 top-1/2 h-[16%] -translate-y-1/2 bg-saffron" />
         <span className="absolute top-1/2 left-1/2 h-[30%] w-[30%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-saffron shadow-[0_2px_6px_rgba(66,52,33,0.35)]" />
     </span>;
+}
+
+/** Zweiter Schritt einer folgenreichen Aktion – mit Erklärung statt Browser-Dialog. */
+export function ConfirmPanel({ title, children, confirmLabel, busyLabel, busy = false, variant = "danger", onConfirm, onCancel }: {
+    title: string; children: ReactNode; confirmLabel: string; busyLabel: string; busy?: boolean; variant?: "danger" | "light" | "dark"; onConfirm: () => void; onCancel: () => void;
+}) {
+    const id = useId();
+    const box = variant === "danger" ? "bg-red-50" : variant === "dark" ? "bg-espresso text-white" : "bg-cream/70";
+    const heading = variant === "danger" ? "text-red-900" : variant === "dark" ? "text-white" : "text-espresso";
+    const body = variant === "danger" ? "text-red-800" : variant === "dark" ? "text-white/75" : "text-bark";
+    const confirm = variant === "danger" ? "bg-red-600 text-white" : variant === "dark" ? "bg-saffron text-espresso" : "bg-espresso text-white";
+    return <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.12 } }} transition={{ duration: 0.25, ease }}
+        role="alertdialog" aria-labelledby={`${id}-title`} aria-describedby={`${id}-text`} className={`rounded-[1.75rem] p-5 ${box}`}>
+        <p id={`${id}-title`} className={`font-semibold ${heading}`}>{title}</p>
+        <p id={`${id}-text`} className={`mt-1 text-sm leading-6 ${body}`}>{children}</p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+            <button type="button" onClick={onCancel} disabled={busy} autoFocus className="min-h-11 rounded-full bg-white text-sm font-semibold text-espresso ring-1 ring-espresso/10 transition active:scale-95">Abbrechen</button>
+            <button type="button" onClick={onConfirm} disabled={busy} className={`min-h-11 rounded-full text-sm font-semibold transition active:scale-95 disabled:opacity-60 ${confirm}`}>{busy ? busyLabel : confirmLabel}</button>
+        </div>
+    </motion.div>;
 }

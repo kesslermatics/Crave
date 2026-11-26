@@ -2,21 +2,21 @@
 /* eslint-disable @next/next/no-img-element -- images are generated data URLs */
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, ReactNode, useCallback, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { ArrowUp, BookmarkPlus, Check, ChevronDown, ChevronLeft, Gift, Lightbulb, ShoppingBasket, Sparkles, Trash2, X } from "lucide-react";
-import { Drop, DropItem, EventDetail as EventData, EventIngredient, eventApi, formatAmount, formatDay } from "@/lib/events";
+import { BookmarkPlus, Check, ChevronDown, ChevronLeft, Gift, Lightbulb, ShoppingBasket, Sparkles, Timer, Trash2, X } from "lucide-react";
+import { Drop, DropItem, EventDetail as EventData, EventIngredient, EventRecipe, eventApi, formatAmount, formatDay } from "@/lib/events";
 import { EventGuess } from "@/components/event-guess";
 import { DishJuryPanel, EventJury } from "@/components/event-jury";
 import { HandicapName, HandicapPicture } from "@/components/handicap-visual";
 import { HandicapIcon } from "@/components/handicap-icons";
-import { FormattedMessage } from "@/components/formatted-message";
 import { LoadingIndicator } from "@/components/loading-indicator";
 import { Toast, toastActionClass, useToast } from "@/components/toast";
 import { addShoppingItems } from "@/lib/shopping-list";
 import { CopyIngredients } from "@/components/copy-ingredients";
 import { EventDebrief } from "@/components/event-debrief";
-import { DayTrack, GiftBox, Stage, StageLabel, day, ease, plural, stageOf } from "@/components/event-stage";
+import { ConfirmPanel, DayTrack, GiftBox, Stage, StageLabel, day, ease, playerName, plural, stageOf } from "@/components/event-stage";
+import { AnswerBubble, ChatComposer, QuestionBubble, TypingBubble } from "@/components/event-chat";
 
 type Revealed = { day_index: number; items: DropItem[]; teaser: string | null };
 
@@ -35,8 +35,8 @@ function SectionHeading({ id, children, aside }: { id: string; children: ReactNo
 }
 
 /** Alle aktiven Handicaps: eingeklappt nur Icons und Summe, aufgeklappt die Details mit Link in den Shop. */
-function HandicapBar({ handicaps, spent }: { handicaps: EventData["handicaps"]; spent: number }) {
-    const [open, setOpen] = useState(false);
+function HandicapBar({ handicaps, spent, defaultOpen = false }: { handicaps: EventData["handicaps"]; spent: number; defaultOpen?: boolean }) {
+    const [open, setOpen] = useState(defaultOpen);
     // Several light handicaps of the same kind show up once with a counter.
     const grouped = [...handicaps.reduce((map, entry) => map.set(entry.handicap, { ...entry, count: (map.get(entry.handicap)?.count ?? 0) + 1 }), new Map<string, EventData["handicaps"][number] & { count: number }>()).values()];
     const order = { heavy: 0, medium: 1, light: 2 } as Record<string, number>;
@@ -56,6 +56,7 @@ function HandicapBar({ handicaps, spent }: { handicaps: EventData["handicaps"]; 
                     <HandicapIcon id={entry.handicap} tier={entry.tier} title={entry.title} size={16} className="h-11 w-11" />
                     <div className="min-w-0">
                         <p className="text-sm font-semibold text-espresso">{entry.title}{entry.count > 1 && <span className="ml-1 text-caramel">×{entry.count}</span>}</p>
+                        {entry.detail && <p className="mt-0.5 text-sm font-semibold text-red-700">{entry.detail}</p>}
                         {entry.description && <p className="mt-0.5 text-sm leading-6 text-bark">{entry.description}</p>}
                         <Link href={`/handicaps#${entry.handicap}`} className="mt-1 inline-flex min-h-8 items-center text-xs font-semibold text-caramel">Im Shop ansehen</Link>
                     </div>
@@ -67,11 +68,11 @@ function HandicapBar({ handicaps, spent }: { handicaps: EventData["handicaps"]; 
 
 /** Cook-day ingredient rows, honouring the "geteiltes Bewusstsein" and memory masks. */
 function CookIngredients({ items }: { items: EventIngredient[] }) {
-    return <ul className="mt-5 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">{items.map((ingredient, i) => <li key={i} className={`flex items-center justify-between gap-3 border-b border-espresso/5 py-1.5 ${ingredient.mask === "memory" ? "blur-sm select-none" : ""}`}>
+    return <ul className="mt-5 divide-y divide-espresso/[0.06] border-y border-espresso/[0.06]">{items.map((ingredient, i) => <li key={i} className={`flex min-h-11 items-center justify-between gap-3 py-2 ${ingredient.mask === "memory" ? "blur-sm select-none" : ""}`}>
         {ingredient.mask === "name"
             ? <span className="flex min-w-0 items-center gap-3">{ingredient.image_data ? <img src={ingredient.image_data} alt="Unbekannte Zutat" className="h-12 w-12 rounded-xl object-cover" /> : <span className="grid h-12 w-12 place-items-center rounded-xl bg-saffron/25 text-caramel" aria-hidden="true"><Gift size={18} /></span>}<span className="sr-only">Zutat ohne Namen</span></span>
-            : <span className="min-w-0 break-words text-espresso">{ingredient.name}</span>}
-        {ingredient.mask !== "amount" && <span className="shrink-0 font-semibold text-caramel">{ingredient.mask === "memory" ? "▇▇" : formatAmount(ingredient.amount, ingredient.unit)}</span>}
+            : <span className="min-w-0 text-[15px] break-words text-espresso">{ingredient.name}</span>}
+        {ingredient.mask !== "amount" && <span className="shrink-0 text-sm font-semibold text-caramel tabular-nums">{ingredient.mask === "memory" ? "▇▇" : formatAmount(ingredient.amount, ingredient.unit)}</span>}
     </li>)}</ul>;
 }
 
@@ -86,7 +87,9 @@ function MemoryTimer({ startedAt, seconds, onExpire }: { startedAt: string; seco
         return () => window.clearInterval(timer);
     }, [startedAt, seconds, onExpire]);
     const whole = Math.ceil(left);
-    return <p role="timer" aria-live="off" className="sticky top-20 z-10 mb-6 rounded-2xl bg-red-600 px-4 py-3 text-center text-lg font-bold text-white shadow-lg">⏱ {Math.floor(whole / 60)}:{String(whole % 60).padStart(2, "0")} – merkt euch alles!</p>;
+    return <p role="timer" aria-live="off" className="sticky top-[4.5rem] z-20 mb-6 flex items-center justify-center gap-2 rounded-full bg-red-600 px-4 py-3 text-center text-base font-semibold text-white shadow-[0_12px_30px_-12px_rgba(220,38,38,0.8)]">
+        <Timer size={18} strokeWidth={2.25} aria-hidden="true" /><span className="tabular-nums">{Math.floor(whole / 60)}:{String(whole % 60).padStart(2, "0")}</span> – merkt euch alles!
+    </p>;
 }
 
 function HandicapBadge({ item }: { item: DropItem }) {
@@ -150,39 +153,49 @@ const TIP_NOTES: Record<string, string> = {
     stille_post: "Stille Post: Nur einer darf fragen, die Antworten sehen nur die anderen.",
 };
 
-function TipChat({ eventId, tips, tipCount, onTip, readOnly = false, effects = [], askerEmail = "" }: { eventId: string; tips: EventData["tips"]; tipCount: number; onTip: () => void; readOnly?: boolean; effects?: string[]; askerEmail?: string }) {
+function TipChat({ eventId, tips, tipCount, onTip, readOnly = false, effects = [], askerEmail = "", myEmail = "" }: { eventId: string; tips: EventData["tips"]; tipCount: number; onTip: () => unknown; readOnly?: boolean; effects?: string[]; askerEmail?: string; myEmail?: string }) {
     const [question, setQuestion] = useState("");
-    const [sending, setSending] = useState(false);
+    const [pending, setPending] = useState<string | null>(null);
     const [error, setError] = useState("");
+    const endRef = useRef<HTMLDivElement>(null);
+    const scrollToEnd = () => window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
+
     async function submit(event: FormEvent) {
         event.preventDefault();
         const text = question.trim();
-        if (!text || sending) return;
-        setSending(true); setError("");
+        if (!text || pending !== null) return;
+        // Frage sofort zeigen und Feld leeren – die Antwort kommt mit Tipp-Indikator nach.
+        setPending(text); setQuestion(""); setError("");
+        scrollToEnd();
         try {
             const history = tips.slice(-3).flatMap((tip) => [{ role: "user", content: tip.question }, { role: "assistant", content: tip.answer }]);
             await eventApi(`/events/${eventId}/tips`, { method: "POST", body: { question: text, history } });
-            setQuestion(""); onTip();
-        } catch (caught) { setError((caught as Error).message); } finally { setSending(false); }
+            await onTip(); // erst neu laden, dann die Platzhalter-Blase entfernen – sonst flackert es
+            scrollToEnd();
+        } catch (caught) { setError((caught as Error).message); setQuestion((current) => current || text); } finally { setPending(null); }
     }
-    return <section className="mt-14 border-t border-espresso/10 pt-10" aria-labelledby="tips-title">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 id="tips-title" className="flex items-center gap-2 text-xl font-semibold text-espresso"><Lightbulb size={20} className="text-caramel" aria-hidden="true" /> {readOnly ? "Tipps" : "Tipp holen"}</h2>
-            <span className="rounded-full bg-espresso px-3 py-1 text-xs font-bold text-white">{tipCount} {tipCount === 1 ? "Tipp" : "Tipps"} genutzt</span>
+    return <section id="tips" className="mt-10 scroll-mt-24" aria-labelledby="tips-title">
+        <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+                <h2 id="tips-title" className="flex items-center gap-2 text-xl font-semibold tracking-[-0.02em] text-espresso"><Lightbulb size={20} className="text-caramel" aria-hidden="true" /> {readOnly ? "Tipps" : "Tipp holen"}</h2>
+                <p className="mt-1 text-sm leading-6 text-bark">Jede Antwort zählt als Tipp – also als Strafpunkt – für euer ganzes Event.</p>
+            </div>
+            <span className="mt-1 shrink-0 rounded-full bg-espresso px-3 py-1 text-xs font-semibold text-white tabular-nums">{tipCount} {tipCount === 1 ? "Tipp" : "Tipps"}</span>
         </div>
-        <p className="mt-1 text-sm text-bark">Jede Antwort zählt als Tipp für euer ganzes Event.</p>
-        {effects.filter((effect) => TIP_NOTES[effect]).map((effect) => <p key={effect} className="mt-2 rounded-2xl bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700">{TIP_NOTES[effect]}{effect === "stille_post" && askerEmail && ` Fragen darf: ${askerEmail}.`}</p>)}
-        <div className="mt-6 space-y-4" aria-live="polite">{tips.map((tip) => <div key={tip.created_at} className="space-y-2">
-            <p className="ml-auto max-w-[85%] rounded-[1.25rem] rounded-br-md bg-espresso px-4 py-2.5 text-sm text-white sm:max-w-md"><span className="block text-[10px] font-bold opacity-70">{tip.email}</span>{tip.question}</p>
-            <div className="max-w-[85%] rounded-[1.25rem] rounded-bl-md bg-white px-4 py-2.5 text-sm leading-6 text-espresso shadow-[0_1px_2px_rgba(66,52,33,0.06)] sm:max-w-md"><FormattedMessage text={tip.answer} />{tip.truth && <p className="mt-2 text-xs font-bold text-caramel">Wahr war Antwort {tip.truth}.</p>}</div>
-        </div>)}
-            {sending && <LoadingIndicator label="Crave überlegt einen Hinweis…" />}
+        {effects.filter((effect) => TIP_NOTES[effect]).map((effect) => <p key={effect} className="mt-3 rounded-2xl bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700">{TIP_NOTES[effect]}{effect === "stille_post" && askerEmail && ` Fragen darf: ${playerName(askerEmail, askerEmail === myEmail)}.`}</p>)}
+        <div className="mt-5 space-y-3" aria-live="polite">
+            {tips.length === 0 && pending === null && <p className="rounded-2xl border border-dashed border-espresso/15 px-4 py-5 text-center text-sm text-bark">{readOnly ? "Keine Tipps genutzt." : "Noch keine Tipps. Fragt Crave, wenn ihr nicht weiterwisst."}</p>}
+            {tips.map((tip) => <div key={tip.created_at} className="space-y-2">
+                <QuestionBubble author={playerName(tip.email, tip.email === myEmail)}>{tip.question}</QuestionBubble>
+                <AnswerBubble text={tip.answer} footer={tip.truth ? <p className="mt-2 text-xs font-semibold text-caramel">Wahr war Antwort {tip.truth}.</p> : null} />
+            </div>)}
+            {pending !== null && <div className="space-y-2"><QuestionBubble author="Du" pending>{pending}</QuestionBubble><TypingBubble label="Crave überlegt einen Hinweis…" /></div>}
+            <div ref={endRef} />
         </div>
         {error && <p role="alert" className="mt-4 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
-        {!readOnly && <form onSubmit={submit} className="mt-6 flex items-center gap-2 rounded-full border border-espresso/10 bg-white py-1.5 pr-1.5 pl-5 focus-within:border-caramel/50 focus-within:ring-4 focus-within:ring-caramel/10">
-            <input value={question} onChange={(e) => setQuestion(e.target.value)} maxLength={800} placeholder="z. B. Wie heiß sollte der Ofen sein?" aria-label="Frage für einen Tipp" enterKeyHint="send" className="min-w-0 flex-1 bg-transparent py-2 text-espresso outline-none placeholder:text-bark/50 text-base sm:text-sm" />
-            <button disabled={sending || !question.trim()} aria-label="Tipp anfragen" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-caramel text-white disabled:bg-espresso/15"><ArrowUp size={17} strokeWidth={2.5} aria-hidden="true" /></button>
-        </form>}
+        {!readOnly && <div className="mt-5">
+            <ChatComposer id="tip-input" value={question} onChange={setQuestion} onSubmit={submit} placeholder="z. B. Wie heiß sollte der Ofen sein?" label="Frage für einen Tipp" sendLabel="Tipp anfragen" canSend={pending === null && question.trim().length > 0} />
+        </div>}
     </section>;
 }
 
@@ -347,19 +360,148 @@ function DeleteEvent({ busy, onConfirm }: { busy: boolean; onConfirm: () => void
     return <div className="mt-14">
         <AnimatePresence mode="wait" initial={false}>
             {confirming
-                ? <motion.div key="confirm" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, transition: { duration: 0.12 } }} transition={{ duration: 0.25, ease }} className="rounded-[1.75rem] bg-red-50 p-5" role="alertdialog" aria-labelledby="delete-title" aria-describedby="delete-text">
-                    <p id="delete-title" className="font-semibold text-red-900">Event für alle löschen?</p>
-                    <p id="delete-text" className="mt-1 text-sm leading-6 text-red-800">Päckchen, Rezepte und Tipps gehen für alle Teilnehmenden verloren. Das lässt sich nicht rückgängig machen.</p>
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                        <button type="button" onClick={() => setConfirming(false)} disabled={busy} autoFocus className="min-h-11 rounded-full bg-white text-sm font-semibold text-espresso ring-1 ring-espresso/10 transition active:scale-95">Abbrechen</button>
-                        <button type="button" onClick={onConfirm} disabled={busy} className="min-h-11 rounded-full bg-red-600 text-sm font-semibold text-white transition active:scale-95 disabled:opacity-60">{busy ? "Wird gelöscht…" : "Endgültig löschen"}</button>
-                    </div>
-                </motion.div>
+                ? <ConfirmPanel key="confirm" title="Event für alle löschen?" confirmLabel="Endgültig löschen" busyLabel="Wird gelöscht…" busy={busy} onConfirm={onConfirm} onCancel={() => setConfirming(false)}>
+                    Päckchen, Rezepte und Tipps gehen für alle Teilnehmenden verloren. Das lässt sich nicht rückgängig machen.
+                </ConfirmPanel>
                 : <motion.div key="button" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.12 } }} className="flex justify-center">
                     <button type="button" onClick={() => setConfirming(true)} className="flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold text-red-700 transition hover:bg-red-50 active:scale-95 active:bg-red-50"><Trash2 size={16} aria-hidden="true" />Event löschen</button>
                 </motion.div>}
         </AnimatePresence>
     </div>;
+}
+
+/** Originalzubereitung (erst nach der Jury sichtbar) als aufklappbare, nummerierte Schritte. */
+function OriginalSteps({ steps }: { steps: string[] }) {
+    const [open, setOpen] = useState(false);
+    return <div className="mt-5 overflow-hidden rounded-2xl bg-saffron/15">
+        <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm font-semibold text-espresso">
+            <span className="flex-1">Originalzubereitung</span>
+            <span className="text-xs font-medium text-bark">{plural(steps.length, "Schritt", "Schritte")}</span>
+            <motion.span animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.25, ease }} className="grid text-bark/60" aria-hidden="true"><ChevronDown size={18} /></motion.span>
+        </button>
+        <AnimatePresence initial={false}>
+            {open && <motion.div {...grow} className="overflow-hidden">
+                <ol className="space-y-3 px-4 pb-4">{steps.map((step, index) => <li key={step} className="flex gap-3 text-sm leading-6 text-espresso">
+                    <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white text-xs font-semibold text-caramel tabular-nums">{index + 1}</span>
+                    <span className="min-w-0">{step}</span>
+                </li>)}</ol>
+            </motion.div>}
+        </AnimatePresence>
+    </div>;
+}
+
+/** Ein Gericht des Kochtags: Bild, Zutaten, Kopieren, Zubereitung und darunter direkt seine Auswertung. */
+function DishCard({ event, recipe, index, embargo, onChange }: { event: EventData; recipe: EventRecipe; index: number; embargo: boolean; onChange: () => void }) {
+    return <motion.article id={`dish-${recipe.id}`} initial={{ opacity: 0, y: 32, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.15 + index * 0.2, type: "spring", stiffness: 140, damping: 20 }}
+        className="mb-6 scroll-mt-32 overflow-hidden rounded-[1.75rem] bg-white shadow-[0_1px_2px_rgba(66,52,33,0.05),0_18px_44px_-28px_rgba(66,52,33,0.45)] ring-1 ring-espresso/[0.06]">
+        {recipe.image_data && <div className="overflow-hidden"><img src={recipe.image_data} alt={embargo ? "Verschwommenes Bild des Gerichts" : recipe.title} className={`aspect-[4/3] w-full object-cover ${embargo ? "scale-125 blur-[25px]" : ""}`} /></div>}
+        <div className="p-5 sm:p-7">
+            <p className="text-[11px] font-semibold tracking-[0.16em] text-caramel uppercase">Gericht {index + 1}{event.recipes.length > 1 && ` von ${event.recipes.length}`} · {recipe.category}</p>
+            <h3 className="mt-1.5 text-2xl leading-tight font-semibold tracking-[-0.03em] text-balance text-espresso sm:text-3xl">{recipe.title}</h3>
+            {recipe.description && <p className="mt-2 text-sm leading-6 text-bark">{recipe.description}</p>}
+            <ul className="mt-3 flex flex-wrap gap-1.5 text-xs font-medium text-bark">
+                <li className="rounded-full bg-cream px-2.5 py-1">{recipe.servings} Portionen</li>
+                <li className="rounded-full bg-cream px-2.5 py-1">ca. {recipe.total_time_minutes} Min.</li>
+            </ul>
+            {recipe.ingredients.length > 0 && <CookIngredients items={recipe.ingredients} />}
+            {/* Not while "Memory" runs: copying the list would undo the handicap. */}
+            {recipe.ingredients.some((item) => item.name && item.mask !== "memory") && !(event.effects.includes("memory") && event.phase !== "finished") && <CopyIngredients className="mt-5"
+                ingredients={recipe.ingredients.filter((item) => item.name && item.mask !== "memory").map((item) => ({ name: item.name, amount: item.amount, unit: item.unit }))} baseServings={recipe.servings} />}
+            {recipe.instructions.length > 0
+                ? <OriginalSteps steps={recipe.instructions} />
+                : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
+            {event.phase === "finished" && <SaveRecipeButton eventId={event.id} recipeId={recipe.id} />}
+            {event.game.blind_revealed && <DishJuryPanel event={event} recipe={recipe} onChange={onChange} />}
+        </div>
+    </motion.article>;
+}
+
+/** Kurzstatus eines Gerichts für die Leiste: kocht / x von y abgegeben / Jury / Strafpunkte. */
+function dishStatus(event: EventData, recipe: EventRecipe): { label: string; tone: "idle" | "busy" | "done" | "good" } {
+    const jury = recipe.jury;
+    if (jury.phase === "judged" && jury.verdict) {
+        const penalty = jury.verdict.penalty;
+        // Keine Strafpunkte sind auch ein Erfolg – nur echte Punkte werden rot.
+        return { label: penalty < 0 ? `−${Math.abs(penalty)}` : `${penalty} Pkt.`, tone: penalty <= 0 ? "good" : "done" };
+    }
+    if (jury.phase === "judging") return { label: "Jury", tone: "busy" };
+    const handedIn = event.submissions.filter((submission) => submission.recipe_id === recipe.id).length;
+    return { label: handedIn ? `${handedIn}/${event.participant_count}` : "kocht", tone: "idle" };
+}
+
+/** Mitlaufende Leiste über den Gerichten: Stand jedes Gerichts, antippen springt hin. */
+function DishProgress({ event, sticky }: { event: EventData; sticky: boolean }) {
+    const [active, setActive] = useState<string | null>(null);
+    useEffect(() => {
+        const observer = new IntersectionObserver((entries) => {
+            const visible = entries.find((entry) => entry.isIntersecting);
+            if (visible) setActive(visible.target.id.replace("dish-", ""));
+        }, { rootMargin: "-35% 0px -55% 0px" });
+        event.recipes.forEach((recipe) => { const element = document.getElementById(`dish-${recipe.id}`); if (element) observer.observe(element); });
+        return () => observer.disconnect();
+    }, [event.recipes]);
+
+    return <nav aria-label="Gerichte" className={`${sticky ? "sticky top-16 z-20" : ""} -mx-5 mb-4 bg-linen/90 px-5 py-2.5 backdrop-blur-md sm:-mx-8 sm:px-8`}>
+        <ol className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {event.recipes.map((recipe, index) => {
+                const status = dishStatus(event, recipe);
+                const isActive = active === recipe.id;
+                const tone = status.tone === "good" ? "bg-green-50 text-green-700" : status.tone === "done" ? "bg-red-50 text-red-700" : status.tone === "busy" ? "bg-saffron/35 text-espresso motion-safe:animate-shimmer" : isActive ? "bg-white/15 text-white/80" : "bg-espresso/[0.05] text-bark";
+                return <li key={recipe.id} className="shrink-0">
+                    <button type="button" onClick={() => document.getElementById(`dish-${recipe.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" })} aria-current={isActive ? "true" : undefined}
+                        className={`flex h-9 items-center gap-2 rounded-full pr-2 pl-1.5 text-xs font-semibold transition-colors active:scale-95 ${isActive ? "bg-espresso text-white" : "bg-white text-espresso ring-1 ring-espresso/[0.08]"}`}>
+                        <span className={`grid h-6 w-6 place-items-center rounded-full text-[11px] tabular-nums ${isActive ? "bg-white/15" : "bg-cream text-caramel"}`} aria-hidden="true">
+                            {status.tone === "done" || status.tone === "good" ? <Check size={12} strokeWidth={3} /> : index + 1}
+                        </span>
+                        {recipe.category}
+                        {event.game.blind_revealed && <span className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${tone}`}>{status.label}</span>}
+                    </button>
+                </li>;
+            })}
+        </ol>
+    </nav>;
+}
+
+/** Blindverkostung: erst nach Bestätigung aufdecken – mit Erklärung statt Browser-Dialog. */
+function BlindReveal({ busy, onReveal }: { busy: boolean; onReveal: () => void }) {
+    const [confirming, setConfirming] = useState(false);
+    return <section className="mt-10" aria-label="Blindverkostung">
+        <AnimatePresence mode="wait" initial={false}>
+            {confirming
+                ? <ConfirmPanel key="confirm" variant="dark" title="Fertig gekocht?" confirmLabel="Aufdecken" busyLabel="Wird aufgedeckt…" busy={busy} onConfirm={onReveal} onCancel={() => setConfirming(false)}>
+                    Dann wird jetzt aufgedeckt, was es sein sollte – danach geht es zur Jury.
+                </ConfirmPanel>
+                : <motion.div key="card" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.12 } }} className="rounded-[1.75rem] bg-espresso p-6 text-white">
+                    <p className="text-[11px] font-semibold tracking-[0.16em] text-saffron uppercase">Blindverkostung</p>
+                    <p className="mt-2 text-sm leading-6 text-white/80">Erst wenn ihr fertig gekocht habt, wird aufgedeckt, was es sein sollte. Danach geht es zur Jury.</p>
+                    <button type="button" onClick={() => setConfirming(true)} disabled={busy} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-semibold text-espresso transition active:scale-[0.98] disabled:opacity-60 sm:w-auto">Gericht aufdecken</button>
+                </motion.div>}
+        </AnimatePresence>
+    </section>;
+}
+
+/** Schwebender Knopf zum Tipp-Chat, solange der Chat nicht im Bild ist (er steht unter allen Gerichten). */
+function TipFab() {
+    const [visible, setVisible] = useState(false);
+    useEffect(() => {
+        const target = document.getElementById("tips");
+        if (!target) return;
+        const observer = new IntersectionObserver(([entry]) => setVisible(!entry.isIntersecting));
+        observer.observe(target);
+        return () => observer.disconnect();
+    }, []);
+    function jump() {
+        const input = document.getElementById("tip-input");
+        // Im selben Tipp fokussieren, sonst öffnet iOS die Tastatur nicht.
+        input?.focus({ preventScroll: true });
+        (input ?? document.getElementById("tips"))?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    return <AnimatePresence>
+        {visible && <motion.button key="tip-fab" type="button" onClick={jump} initial={{ opacity: 0, y: 16, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 16, scale: 0.9 }} transition={{ type: "spring", stiffness: 500, damping: 32 }}
+            className="fixed right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 flex h-12 items-center gap-2 rounded-full bg-espresso pr-5 pl-4 text-sm font-semibold text-white shadow-[0_14px_30px_-10px_rgba(66,52,33,0.75)] active:scale-95 md:bottom-8">
+            <Lightbulb size={18} className="text-saffron" aria-hidden="true" />Tipp holen
+        </motion.button>}
+    </AnimatePresence>;
 }
 
 function DetailSkeleton() {
@@ -448,10 +590,12 @@ export function EventDetail({ eventId }: { eventId: string }) {
         showToast(`${count} ${count === 1 ? "Zutat" : "Zutaten"} auf der Einkaufsliste${merged ? ` · ${merged} zusammengefasst` : ""}`, <Link href="/einkaufsliste" className={toastActionClass}>Ansehen</Link>);
     }
     const embargo = event.effects.includes("bild_embargo") && event.phase !== "finished";
-    const activeMedium = event.handicaps.filter((entry) => entry.tier !== "light");
     const stage = stageOf(event, event.today);
     const available = event.drops.filter((drop) => drop.state === "available");
     const teasers = event.drops.filter((drop) => drop.state === "revealed" && drop.teaser);
+    const showTips = event.status === "active" && event.is_cook_day && !(event.guessing && !event.guessing.done) && (event.phase === "cooking" || event.tips.length > 0);
+    const tipsReadOnly = event.phase !== "cooking" || !event.game.can_ask || (event.effects.includes("ein_schuss") && event.tip_count >= 1);
+    const myEmail = event.stats.find((stat) => stat.is_me)?.email ?? "";
 
     return <Frame>
         <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, ease }} className="mt-4">
@@ -463,7 +607,7 @@ export function EventDetail({ eventId }: { eventId: string }) {
         </motion.header>
         {/* Die tägliche Hauptaktion steht ganz oben – noch vor den Handicaps. */}
         {event.status === "active" && !event.is_cook_day && available.length > 0 && <TodayCard drops={available} today={event.today} imagesPending={event.images_pending} opening={opening !== null} onOpen={reveal} />}
-        {event.handicaps.length > 0 && <HandicapBar handicaps={event.handicaps} spent={event.penalty_spent} />}
+        {event.handicaps.length > 0 && <HandicapBar handicaps={event.handicaps} spent={event.penalty_spent} defaultOpen={event.is_cook_day && event.phase === "cooking"} />}
         {error && <p role="alert" className="mt-6 rounded-2xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800">{error}</p>}
 
         {event.status === "generating" && <div className="mt-8 rounded-[1.75rem] bg-white p-5 ring-1 ring-espresso/[0.06]">
@@ -474,55 +618,38 @@ export function EventDetail({ eventId }: { eventId: string }) {
         </div>}
         {event.status === "failed" && <p className="mt-8 rounded-[1.75rem] bg-red-50 p-5 text-sm leading-6 text-red-800">{event.progress || "Beim Vorbereiten ist etwas schiefgelaufen."}</p>}
 
-        {event.status === "active" && event.is_cook_day && <section className="mt-10" aria-labelledby="reveal-heading">
+        {event.status === "active" && event.is_cook_day && <section className="mt-8" aria-labelledby="reveal-heading">
             <h2 id="reveal-heading" className="sr-only">Die Gerichte</h2>
-            {activeMedium.length > 0 && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="active-handicaps">
-                <h3 id="active-handicaps" className="text-sm font-semibold text-espresso">Heute im Spiel</h3>
-                <ul className="mt-2 space-y-2 text-sm text-bark">{activeMedium.map((entry) => <li key={entry.handicap} className="flex items-start gap-3"><HandicapIcon id={entry.handicap} tier={entry.tier} title={entry.title} size={14} className="h-7 w-7 rounded-lg" /><span><span className="font-semibold text-red-700">{entry.title}</span>{entry.detail ? ` · ${entry.detail}` : ""}</span></li>)}</ul>
-            </section>}
             {event.guessing && <EventGuess event={event} onChange={load} />}
             {!(event.guessing && !event.guessing.done) && <>
-                {event.game.memory_phase === "waiting" && <div className="mb-8 rounded-3xl bg-espresso p-6 text-center text-white">
-                    <p className="text-sm">Memory-Modus: Nach dem Start habt ihr {event.game.memory_seconds / 60} Minuten, um euch alle Zutaten zu merken.</p>
-                    <button type="button" disabled={gameBusy} onClick={() => gameAction("memory-start")} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-bold text-espresso disabled:opacity-60 sm:w-auto">Kochen starten</button>
+                {event.game.memory_phase === "waiting" && <div className="mb-6 rounded-[1.75rem] bg-espresso p-6 text-white">
+                    <p className="text-[11px] font-semibold tracking-[0.16em] text-saffron uppercase">Memory-Modus</p>
+                    <p className="mt-2 text-sm leading-6 text-white/80">Nach dem Start habt ihr {event.game.memory_seconds / 60} Minuten, um euch alle Zutaten zu merken.</p>
+                    <button type="button" disabled={gameBusy} onClick={() => gameAction("memory-start")} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-semibold text-espresso transition active:scale-[0.98] disabled:opacity-60 sm:w-auto">Kochen starten</button>
                 </div>}
                 {event.game.memory_phase === "visible" && event.game.memory_started_at && <MemoryTimer startedAt={event.game.memory_started_at} seconds={event.game.memory_seconds} onExpire={load} />}
                 {event.effects.includes("geteiltes_bewusstsein") && event.phase === "cooking" && <p className="mb-6 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">Geteiltes Bewusstsein: Du siehst {event.game.role === "A" ? "nur die Namen" : "nur Bilder und Mengen"}. Den Rest kennt dein Gegenüber.</p>}
-                {event.mixed_ingredients && <section className="-mx-2 mb-8 rounded-[2rem] bg-white p-5 shadow-[0_12px_40px_rgba(66,52,33,0.12)] sm:mx-0 sm:p-8" aria-labelledby="mixed-title">
-                    <h3 id="mixed-title" className="font-semibold text-espresso">Alle Zutaten – bunt gemischt</h3>
-                    <p className="mt-1 text-xs text-bark">Kategorien-Salat: Welche Zutat gehört in welches Gericht?</p>
+                {event.recipes.length > 1 && <DishProgress event={event} sticky={event.game.memory_phase !== "visible"} />}
+                {event.mixed_ingredients && <section className="mb-6 rounded-[1.75rem] bg-white p-5 ring-1 ring-espresso/[0.06] sm:p-7" aria-labelledby="mixed-title">
+                    <p className="text-[11px] font-semibold tracking-[0.16em] text-red-700 uppercase">Kategorien-Salat</p>
+                    <h3 id="mixed-title" className="mt-1.5 text-lg font-semibold text-espresso">Alle Zutaten – bunt gemischt</h3>
+                    <p className="mt-1 text-sm text-bark">Welche Zutat gehört in welches Gericht?</p>
                     <CookIngredients items={event.mixed_ingredients} />
                 </section>}
-                {event.recipes.map((recipe, index) => <motion.article key={recipe.title} initial={{ opacity: 0, y: 40, scale: 0.92 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.2 + index * 0.5, type: "spring", stiffness: 120 }} className="-mx-2 mb-8 overflow-hidden rounded-[2rem] bg-white sm:mx-0 shadow-[0_12px_40px_rgba(66,52,33,0.12)]">
-                    {recipe.image_data && <div className="overflow-hidden"><img src={recipe.image_data} alt={embargo ? "Verschwommenes Bild des Gerichts" : recipe.title} className={`aspect-square w-full object-cover sm:aspect-[16/10] ${embargo ? "scale-125 blur-[25px]" : ""}`} /></div>}
-                    <div className="p-5 sm:p-8">
-                        <p className="text-xs font-bold tracking-[0.2em] text-caramel uppercase">{recipe.category}</p>
-                        <h3 className="mt-1 text-2xl font-semibold tracking-[-0.03em] text-espresso sm:text-3xl">{recipe.title}</h3>
-                        <p className="mt-3 text-sm leading-6 text-bark">{recipe.description}</p>
-                        <p className="mt-3 text-xs font-semibold text-bark">{recipe.servings} Portionen · ca. {recipe.total_time_minutes} Min.</p>
-                        {recipe.ingredients.length > 0 && <CookIngredients items={recipe.ingredients} />}
-                        {/* Not while "Memory" runs: copying the list would undo the handicap. */}
-                        {recipe.ingredients.some((item) => item.name && item.mask !== "memory") && !(event.effects.includes("memory") && event.phase !== "finished") && <CopyIngredients className="mt-5"
-                            ingredients={recipe.ingredients.filter((item) => item.name && item.mask !== "memory").map((item) => ({ name: item.name, amount: item.amount, unit: item.unit }))} baseServings={recipe.servings} />}
-                        {recipe.instructions.length > 0
-                            ? <details className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso"><summary className="min-h-8 cursor-pointer font-semibold">Originalzubereitung</summary><ol className="mt-2 list-decimal space-y-2 pl-5 leading-6">{recipe.instructions.map((step) => <li key={step}>{step}</li>)}</ol></details>
-                            : <p className="mt-5 rounded-2xl bg-saffron/15 px-4 py-3 text-sm text-espresso">Keine Schritte, keine Reihenfolge – jetzt seid ihr dran.</p>}
-                        {event.phase === "finished" && <SaveRecipeButton eventId={event.id} recipeId={recipe.id} />}
-                        {event.game.blind_revealed && <DishJuryPanel event={event} recipe={recipe} onChange={load} />}
-                    </div>
-                </motion.article>)}
-                {event.handicaps.some((entry) => entry.tier === "light" && entry.ingredient) && <section className="mb-8 rounded-3xl bg-red-50/60 p-5" aria-labelledby="handicaps-title">
-                    <h3 id="handicaps-title" className="text-sm font-semibold text-espresso">Aufgelöst: Zutaten-Handicaps</h3>
-                    <ul className="mt-2 space-y-1 text-sm text-bark">{event.handicaps.filter((entry) => entry.tier === "light").map((entry, index) => <li key={index} className="flex items-center gap-3"><HandicapIcon id={entry.handicap} tier="light" title={entry.title} size={14} className="h-7 w-7 rounded-lg" /><span><span className="font-semibold text-espresso">{entry.ingredient}</span> · {entry.title}</span></li>)}</ul>
+                {event.recipes.map((recipe, index) => <DishCard key={recipe.title} event={event} recipe={recipe} index={index} embargo={embargo} onChange={load} />)}
+                {event.handicaps.some((entry) => entry.tier === "light" && entry.ingredient) && <section className="mb-6" aria-labelledby="handicaps-title">
+                    <h3 id="handicaps-title" className="px-1 text-[11px] font-semibold tracking-[0.14em] text-bark/75 uppercase">Aufgelöst: Zutaten-Handicaps</h3>
+                    <ul className="mt-2.5 overflow-hidden rounded-2xl bg-white ring-1 ring-espresso/[0.07]">{event.handicaps.filter((entry) => entry.tier === "light").map((entry, index) => <li key={index} className="flex items-center gap-3 border-t border-espresso/[0.06] px-4 py-2.5 text-sm first:border-0">
+                        <HandicapIcon id={entry.handicap} tier="light" title={entry.title} size={14} className="h-8 w-8 rounded-lg" />
+                        <span className="min-w-0"><span className="font-semibold text-espresso">{entry.ingredient}</span> <span className="text-bark">· {entry.title}</span></span>
+                    </li>)}</ul>
                 </section>}
-                {(event.phase === "cooking" || event.tips.length > 0) && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={event.phase !== "cooking" || !event.game.can_ask || (event.effects.includes("ein_schuss") && event.tip_count >= 1)} effects={event.effects} askerEmail={event.game.asker_email} />}
-                {!event.game.blind_revealed && event.phase === "cooking" ? <section className="mt-14 rounded-3xl bg-espresso p-6 text-center text-white" aria-label="Blindverkostung">
-                    <p className="text-sm">Blindverkostung: Erst wenn ihr fertig gekocht habt, wird aufgedeckt, was es sein sollte. Danach geht es zur Jury.</p>
-                    <button type="button" disabled={gameBusy} onClick={() => { if (window.confirm("Fertig gekocht? Dann jetzt aufdecken.")) void gameAction("blind-reveal"); }} className="mt-4 min-h-12 w-full rounded-full bg-saffron px-6 py-3 text-sm font-bold text-espresso disabled:opacity-60 sm:w-auto">Gericht aufdecken</button>
-                </section> : <EventJury event={event} onChange={load} />}
+                {showTips && <TipChat eventId={event.id} tips={event.tips} tipCount={event.tip_count} onTip={load} readOnly={tipsReadOnly} effects={event.effects} askerEmail={event.game.asker_email} myEmail={myEmail} />}
+                {!event.game.blind_revealed && event.phase === "cooking" ? <BlindReveal busy={gameBusy} onReveal={() => void gameAction("blind-reveal")} /> : <EventJury event={event} onChange={load} />}
                 {(event.phase === "judged" || event.phase === "finished") && <EventDebrief eventId={event.id} />}
             </>}
         </section>}
+        {showTips && !tipsReadOnly && <TipFab />}
 
         {event.status === "active" && <>
             {!event.is_cook_day && <DropCalendar drops={event.drops} today={event.today} opening={opening} disabled={opening !== null || event.images_pending} onOpen={reveal}
